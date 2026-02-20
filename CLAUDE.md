@@ -12,8 +12,11 @@ SolidWorks MCP Server bridges Claude AI with SolidWorks CAD via the Model Contex
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the integration test (creates a 100mm cube in SolidWorks)
+# Run the original integration test (creates a 100mm cube in SolidWorks)
 python test_solidworks.py
+
+# Run the new sketch tools test suite
+python test_solidworks.py --new
 
 # Run the server directly (normally launched by Claude Desktop)
 python server.py
@@ -39,26 +42,32 @@ The server is registered in `%APPDATA%\Claude\claude_desktop_config.json`:
 server.py                  # MCP server: registers tools, routes calls, handles logging
 solidworks/
   connection.py            # COM connection to SolidWorks, template discovery, part creation
-  sketching.py             # 2D sketch tools (rectangle, circle) with spatial tracking
+  sketching.py             # 2D sketch tools, dimensioning, and constraints with spatial tracking
   modeling.py              # 3D feature tools (new_part, extrusion)
 test_solidworks.py         # End-to-end integration test (no pytest, plain script)
 ```
 
 **Data flow:** Claude → MCP tool call → `server.py` → `_route_tool()` → sketching or modeling module → SolidWorks COM API
 
-**Workflow order:** `new_part` → `create_sketch` → `sketch_rectangle`/`sketch_circle` → `exit_sketch` → `create_extrusion`
+**Workflow order:** `new_part` → `create_sketch` → sketch entities → (optional: dimensions/constraints) → `exit_sketch` → `create_extrusion`
 
 ## Key Implementation Details
 
 **Units:** All tool inputs/outputs use millimeters. The SolidWorks COM API requires meters, so all values are divided by 1000 internally before API calls.
 
-**Spatial tracking:** `SketchingTools` maintains a `last_shape` dict with the center, edges, width/height/radius of the most recently drawn shape. This enables Claude to position shapes relative to previous ones without needing to track coordinates itself.
+**Spatial tracking:** `SketchingTools` maintains a `last_shape` dict with the center, edges, width/height/radius of the most recently drawn shape. This enables Claude to position shapes relative to previous ones without needing to track coordinates itself. Entities that update spatial tracking: rectangle, circle, line, arc, polygon, ellipse, spline, slot. Entities that do NOT update tracking: point, centerline, text.
 
-**Positioning priority** in `sketch_rectangle`/`sketch_circle` (highest wins):
+**Positioning priority** in `sketch_rectangle`/`sketch_circle`/`sketch_polygon` (highest wins):
 1. Absolute `centerX`/`centerY`
 2. `spacing` from last shape edge
 3. Relative `relativeX`/`relativeY` offset from last center
 4. Default: origin `(0, 0)`
+
+**Sketch entity tools:** `sketch_rectangle`, `sketch_circle`, `sketch_line`, `sketch_centerline`, `sketch_arc` (3-point or center-point), `sketch_spline`, `sketch_ellipse`, `sketch_polygon`, `sketch_slot`, `sketch_point`, `sketch_text`.
+
+**Dimensioning tools:** `sketch_dimension` and `set_dimension_value`. These use coordinate-based entity selection via `SelectByID2`. Provide points on or near sketch entities to select them, then specify where to place dimension text. The `value` parameter drives geometry.
+
+**Constraint tools:** `sketch_constraint` applies geometric relations (COINCIDENT, CONCENTRIC, TANGENT, PARALLEL, PERPENDICULAR, HORIZONTAL, VERTICAL, EQUAL, SYMMETRIC, MIDPOINT, COLLINEAR, CORADIAL). `sketch_toggle_construction` toggles entities between normal and construction geometry.
 
 **SolidWorks COM:** Uses `win32com.client` via `pywin32`. `connection.py` attempts to connect to an already-running SolidWorks instance first, then launches a new one. Template path is discovered by glob: `C:\ProgramData\SOLIDWORKS\SOLIDWORKS *\templates\Part.prtdot`.
 
