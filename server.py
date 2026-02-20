@@ -10,16 +10,19 @@ from typing import Any
 import logging
 import sys
 import asyncio
+from pathlib import Path
+import pythoncom
 
 from solidworks import SolidWorksConnection, SketchingTools, ModelingTools
 
 # Configure logging
+_log_path = Path(__file__).parent / 'solidworks_mcp.log'
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('solidworks_mcp.log'),
-        logging.StreamHandler(sys.stdout)
+        logging.FileHandler(_log_path),
+        logging.StreamHandler(sys.stderr)
     ]
 )
 logger = logging.getLogger(__name__)
@@ -104,4 +107,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    pythoncom.CoInitialize()
     asyncio.run(main())
