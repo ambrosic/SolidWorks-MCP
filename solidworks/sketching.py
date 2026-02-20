@@ -412,72 +412,10 @@ class SketchingTools:
                     "required": ["x", "y", "text", "height"]
                 }
             ),
-            Tool(
-                name="solidworks_sketch_dimension",
-                description="Add a smart dimension to sketch entities. Select entities by providing points on or near them, then place the dimension text. Can optionally set the dimension value to drive geometry.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "entityPoints": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "x": {"type": "number", "description": "X coordinate on/near entity (mm)"},
-                                    "y": {"type": "number", "description": "Y coordinate on/near entity (mm)"}
-                                },
-                                "required": ["x", "y"]
-                            },
-                            "minItems": 1,
-                            "maxItems": 2,
-                            "description": "Points on or near sketch entities to dimension. 1 point for radius/diameter, 2 for distance between entities."
-                        },
-                        "entityTypes": {
-                            "type": "array",
-                            "items": {
-                                "type": "string",
-                                "enum": ["SKETCHSEGMENT", "SKETCHPOINT", "EXTSKETCHPOINT"]
-                            },
-                            "description": "Selection type for each entity point. Default: SKETCHSEGMENT for all."
-                        },
-                        "dimX": {
-                            "type": "number",
-                            "description": "X position for dimension text placement (mm)"
-                        },
-                        "dimY": {
-                            "type": "number",
-                            "description": "Y position for dimension text placement (mm)"
-                        },
-                        "value": {
-                            "type": "number",
-                            "description": "Optional: Set dimension value (mm) to drive geometry"
-                        }
-                    },
-                    "required": ["entityPoints", "dimX", "dimY"]
-                }
-            ),
-            Tool(
-                name="solidworks_set_dimension_value",
-                description="Set the value of an existing dimension by selecting it at a specific location.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "dimX": {
-                            "type": "number",
-                            "description": "X position near the dimension text to select (mm)"
-                        },
-                        "dimY": {
-                            "type": "number",
-                            "description": "Y position near the dimension text to select (mm)"
-                        },
-                        "value": {
-                            "type": "number",
-                            "description": "New dimension value (mm)"
-                        }
-                    },
-                    "required": ["dimX", "dimY", "value"]
-                }
-            ),
+            # NOTE: sketch_dimension and set_dimension_value are disabled
+            # because AddDimension2 triggers a blocking "Modify Dimension"
+            # dialog that cannot be reliably suppressed via COM automation.
+            # The implementation methods are kept below for future use.
             Tool(
                 name="solidworks_sketch_constraint",
                 description="Add a geometric constraint (relation) between selected sketch entities.",
@@ -570,8 +508,6 @@ class SketchingTools:
             "solidworks_sketch_slot": lambda: self.sketch_slot(args),
             "solidworks_sketch_point": lambda: self.sketch_point(args),
             "solidworks_sketch_text": lambda: self.sketch_text(args),
-            "solidworks_sketch_dimension": lambda: self.sketch_dimension(args),
-            "solidworks_set_dimension_value": lambda: self.set_dimension_value(args),
             "solidworks_sketch_constraint": lambda: self.sketch_constraint(args),
             "solidworks_sketch_toggle_construction": lambda: self.toggle_construction(args),
             "solidworks_get_last_shape_info": lambda: self.get_last_shape_info(),
@@ -1189,11 +1125,13 @@ class SketchingTools:
             if not success:
                 raise Exception(f"Failed to select entity at ({pt['x']}, {pt['y']}) mm")
 
-        # Suppress the "Modify Dimension" dialog that blocks on AddDimension2
-        # swInputDimValOnCreate = 86
-        sw_app = self.connection.app
-        original_pref = sw_app.GetUserPreferenceToggle(86)
-        sw_app.SetUserPreferenceToggle(86, False)
+        # Suppress the dimension dialog by bypassing UI entirely.
+        # Preference 86 is set globally at connection time. AddToDB +
+        # DisplayWhenAdded bypass the sketch manager UI pipeline so
+        # no PropertyManager / Modify dialog can appear.
+        sm = doc.SketchManager
+        sm.AddToDB = True
+        sm.DisplayWhenAdded = False
 
         try:
             dim_display = doc.AddDimension2(
@@ -1201,24 +1139,28 @@ class SketchingTools:
                 args["dimY"] / 1000.0,
                 0.0
             )
+
+            if not dim_display:
+                raise Exception("Failed to add dimension. Ensure valid entities are selected.")
+
+            result_msg = f"Dimension added at ({args['dimX']:.1f}, {args['dimY']:.1f}) mm"
+
+            # Optionally set the dimension value to drive geometry
+            if "value" in args:
+                value_m = args["value"] / 1000.0
+                dim = dim_display.GetDimension2(0)
+                if dim:
+                    dim.SetSystemValue3(value_m, 2, "")
+                    result_msg += f", value set to {args['value']}mm"
+
+            doc.ClearSelection2(True)
         finally:
-            sw_app.SetUserPreferenceToggle(86, original_pref)
+            sm.AddToDB = False
+            sm.DisplayWhenAdded = True
 
-        if not dim_display:
-            raise Exception("Failed to add dimension. Ensure valid entities are selected.")
-
-        result_msg = f"Dimension added at ({args['dimX']:.1f}, {args['dimY']:.1f}) mm"
-
-        # Optionally set the dimension value to drive geometry
         if "value" in args:
-            value_m = args["value"] / 1000.0
-            dim = dim_display.GetDimension2(0)
-            if dim:
-                dim.SetSystemValue3(value_m, 2, "")
-                doc.ForceRebuild3(True)
-                result_msg += f", value set to {args['value']}mm"
+            doc.ForceRebuild3(True)
 
-        doc.ClearSelection2(True)
         logger.info(result_msg)
         return f"✓ {result_msg}"
 

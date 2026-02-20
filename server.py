@@ -89,8 +89,6 @@ class SolidWorksMCPServer:
         "solidworks_sketch_slot",
         "solidworks_sketch_point",
         "solidworks_sketch_text",
-        "solidworks_sketch_dimension",
-        "solidworks_set_dimension_value",
         "solidworks_sketch_constraint",
         "solidworks_sketch_toggle_construction",
         "solidworks_exit_sketch",

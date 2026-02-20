@@ -65,7 +65,7 @@ test_solidworks.py         # End-to-end integration test (no pytest, plain scrip
 
 **Sketch entity tools:** `sketch_rectangle`, `sketch_circle`, `sketch_line`, `sketch_centerline`, `sketch_arc` (3-point or center-point), `sketch_spline`, `sketch_ellipse`, `sketch_polygon`, `sketch_slot`, `sketch_point`, `sketch_text`.
 
-**Dimensioning tools:** `sketch_dimension` and `set_dimension_value`. These use coordinate-based entity selection via `SelectByID2`. Provide points on or near sketch entities to select them, then specify where to place dimension text. The `value` parameter drives geometry.
+**Dimensioning tools (disabled):** `sketch_dimension` and `set_dimension_value` are implemented but disabled because `AddDimension2` triggers a blocking "Modify Dimension" dialog that cannot be reliably suppressed via COM automation. The methods are kept in `sketching.py` for future use.
 
 **Constraint tools:** `sketch_constraint` applies geometric relations (COINCIDENT, CONCENTRIC, TANGENT, PARALLEL, PERPENDICULAR, HORIZONTAL, VERTICAL, EQUAL, SYMMETRIC, MIDPOINT, COLLINEAR, CORADIAL). `sketch_toggle_construction` toggles entities between normal and construction geometry.
 
