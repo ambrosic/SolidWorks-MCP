@@ -6,31 +6,36 @@ These tests evaluate an AI agent's ability to use the SolidWorks MCP server tool
 
 **Prerequisites:** SolidWorks must be running on the machine. The MCP server must be registered in Claude Desktop's config.
 
+**Conventions:**
+- Every test that produces a solid body starts with `solidworks_new_part` for consistency.
+- Every test that produces a solid body ends with `solidworks_get_mass_properties` and reports the expected volume so the result can be verified numerically.
+
 ---
 
 ## Test 1: Basic Cube (Fundamental Workflow)
 
-**What it tests:** The core workflow — creating a new part, opening a sketch, drawing a rectangle, exiting the sketch, and extruding.
+**What it tests:** The core workflow — creating a new part, opening a sketch, drawing a rectangle, and extruding.
 
 **Prompt:**
 
 ```
-Create a new part in SolidWorks. On the Front plane, sketch a 100mm x 100mm rectangle centered at the origin, then extrude it 100mm to create a cube.
+Create a new part in SolidWorks. On the Front plane, sketch a 100mm x 100mm rectangle centered at the origin, then extrude it 100mm to create a cube. After creating the solid, report the volume using mass properties.
 ```
 
 **Expected outcome:**
 - A new part document is created
 - A sketch is opened on the Front plane
 - A 100mm x 100mm rectangle is drawn centered at (0, 0)
-- The sketch is exited (or extrusion handles it)
 - An extrusion of 100mm depth is created
 - Result: a cube visible in SolidWorks
+- **Expected volume: 1,000,000 mm^3**
 
 **Tools that must be called (in order):**
-1. `solidworks_new_part` or `solidworks_create_sketch` (which auto-creates a part)
+1. `solidworks_new_part`
 2. `solidworks_create_sketch` with plane "Front"
 3. `solidworks_sketch_rectangle` with width=100, height=100, centerX=0, centerY=0
 4. `solidworks_create_extrusion` with depth=100
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -41,18 +46,20 @@ Create a new part in SolidWorks. On the Front plane, sketch a 100mm x 100mm rect
 **Prompt:**
 
 ```
-Create a cylinder in SolidWorks. It should have a diameter of 50mm and a height of 75mm. Use the Top plane for the sketch.
+Create a new part. Draw a cylinder with a diameter of 50mm and a height of 75mm. Use the Top plane for the sketch. Report the volume using mass properties.
 ```
 
 **Expected outcome:**
 - A circle with radius 25mm is sketched on the Top plane
 - Extruded 75mm to form a cylinder
-- Diameter of 50mm, height of 75mm
+- **Expected volume: ~147,262 mm^3** (pi x 25^2 x 75)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Top"
-2. `solidworks_sketch_circle` with radius=25
-3. `solidworks_create_extrusion` with depth=75
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Top"
+3. `solidworks_sketch_circle` with radius=25
+4. `solidworks_create_extrusion` with depth=75
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -63,18 +70,21 @@ Create a cylinder in SolidWorks. It should have a diameter of 50mm and a height 
 **Prompt:**
 
 ```
-Create a hexagonal prism in SolidWorks. The hexagon should have a circumscribed radius of 30mm (center to vertex), and the prism should be 40mm tall. Sketch on the Front plane.
+Create a new part. On the Front plane, draw a regular hexagon with a circumscribed radius of 30mm (center to vertex) and extrude it 40mm tall. Report the volume.
 ```
 
 **Expected outcome:**
 - A 6-sided polygon with radius 30mm at the origin
 - Extruded 40mm
 - Result: a hexagonal prism
+- **Expected volume: ~93,531 mm^3** (3*sqrt(3)/2 x 30^2 x 40)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Front"
-2. `solidworks_sketch_polygon` with radius=30, numSides=6
-3. `solidworks_create_extrusion` with depth=40
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_polygon` with radius=30, numSides=6
+4. `solidworks_create_extrusion` with depth=40
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -85,18 +95,21 @@ Create a hexagonal prism in SolidWorks. The hexagon should have a circumscribed 
 **Prompt:**
 
 ```
-Create an elliptical disc. The ellipse should have a semi-major axis of 40mm and a semi-minor axis of 25mm, centered at the origin on the Front plane. Extrude it 5mm thick.
+Create a new part. Draw an ellipse with a semi-major axis of 40mm and a semi-minor axis of 25mm, centered at the origin on the Front plane. Extrude it 5mm thick. Report the volume.
 ```
 
 **Expected outcome:**
 - An ellipse centered at (0, 0) with majorRadius=40, minorRadius=25
 - Extruded 5mm
 - Result: a flat elliptical disc
+- **Expected volume: ~15,708 mm^3** (pi x 40 x 25 x 5)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Front"
-2. `solidworks_sketch_ellipse` with centerX=0, centerY=0, majorRadius=40, minorRadius=25
-3. `solidworks_create_extrusion` with depth=5
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_ellipse` with centerX=0, centerY=0, majorRadius=40, minorRadius=25
+4. `solidworks_create_extrusion` with depth=5
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -107,18 +120,21 @@ Create an elliptical disc. The ellipse should have a semi-major axis of 40mm and
 **Prompt:**
 
 ```
-Create an extruded slot shape. The slot should run horizontally from (-30, 0) to (30, 0) with a total width of 20mm. Sketch on the Front plane and extrude 10mm.
+Create a new part. Draw a slot that runs horizontally from (-30, 0) to (30, 0) with a total width of 20mm on the Front plane. Extrude it 10mm. Report the volume.
 ```
 
 **Expected outcome:**
 - A straight slot from (-30, 0) to (30, 0) with width=20
 - Extruded 10mm
 - Result: a stadium/slot-shaped solid
+- **Expected volume: ~15,142 mm^3** (rectangle 60x20 + two semicircles of radius 10, times 10mm depth)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Front"
-2. `solidworks_sketch_slot` with x1=-30, y1=0, x2=30, y2=0, width=20
-3. `solidworks_create_extrusion` with depth=10
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_slot` with x1=-30, y1=0, x2=30, y2=0, width=20
+4. `solidworks_create_extrusion` with depth=10
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -326,47 +342,50 @@ Then apply a PARALLEL constraint between them. Don't extrude.
 **Prompt:**
 
 ```
-Create a rectangular block that is 80mm wide, 60mm tall, and 30mm deep. Then cut a circular hole through the center of the front face. The hole should have a diameter of 20mm and go 30mm deep (all the way through).
+Create a new part. Make a rectangular block that is 80mm wide, 60mm tall, and 30mm deep. Then cut a circular hole through the center of the front face. The hole should have a diameter of 20mm and go 30mm deep (all the way through). Report the volume.
 ```
 
 **Expected outcome:**
 - A rectangular block (80x60mm sketch on Front plane, extruded 30mm)
 - A circular hole (radius 10mm) cut through the center of the front face
 - The cut should go all the way through (30mm deep)
-- The hole should be centered on the front face of the block
+- **Expected volume: ~134,575 mm^3** (80x60x30 - pi x 10^2 x 30)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Front"
-2. `solidworks_sketch_rectangle` with width=80, height=60, centerX=0, centerY=0
-3. `solidworks_create_extrusion` with depth=30
-4. `solidworks_create_sketch` with faceX, faceY, faceZ pointing to the front face (e.g., faceX=0, faceY=0, faceZ=0)
-5. `solidworks_sketch_circle` with radius=10, centerX=0, centerY=0
-6. `solidworks_create_cut_extrusion` with depth=30
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=80, height=60, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=30
+5. `solidworks_create_sketch` with faceX=0, faceY=0, faceZ=0
+6. `solidworks_sketch_circle` with radius=10, centerX=0, centerY=0
+7. `solidworks_create_cut_extrusion` with depth=30
+8. `solidworks_get_mass_properties`
 
 ---
 
 ## Test 15: Mass Properties Verification
 
-**What it tests:** Creating a known geometry and querying its mass properties.
+**What it tests:** Creating a known geometry and querying its mass properties with exact expected values.
 
 **Prompt:**
 
 ```
-Create a 100mm x 100mm x 100mm cube (sketch on Front plane, centered at origin, extruded 100mm). Then get the mass properties. Report the volume and surface area.
+Create a new part. Make a 100mm x 100mm x 100mm cube (sketch on Front plane, centered at origin, extruded 100mm). Then get the mass properties. Report the volume, surface area, and center of mass.
 ```
 
 **Expected outcome:**
 - A 100mm cube is created
-- Mass properties are retrieved
-- Volume should be approximately 1,000,000 mm^3
-- Surface area should be approximately 60,000 mm^2
-- Center of mass should be at approximately (50, 50, 50) mm
+- Mass properties are retrieved and reported
+- **Expected volume: 1,000,000 mm^3**
+- **Expected surface area: 60,000 mm^2**
+- **Expected center of mass: approximately (50, 50, 50) mm**
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Front"
-2. `solidworks_sketch_rectangle` with width=100, height=100, centerX=0, centerY=0
-3. `solidworks_create_extrusion` with depth=100
-4. `solidworks_get_mass_properties`
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=100, height=100, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=100
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -377,7 +396,7 @@ Create a 100mm x 100mm x 100mm cube (sketch on Front plane, centered at origin, 
 **Prompt:**
 
 ```
-Create a new part. Sketch a 40mm radius circle on the Right plane and extrude it 60mm.
+Create a new part. Sketch a 40mm radius circle on the Right plane and extrude it 60mm. Report the volume.
 ```
 
 **Expected outcome:**
@@ -385,11 +404,14 @@ Create a new part. Sketch a 40mm radius circle on the Right plane and extrude it
 - Circle with radius 40mm
 - Extruded 60mm along the X axis
 - Result: a cylinder oriented along X
+- **Expected volume: ~301,593 mm^3** (pi x 40^2 x 60)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Right"
-2. `solidworks_sketch_circle` with radius=40
-3. `solidworks_create_extrusion` with depth=60
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Right"
+3. `solidworks_sketch_circle` with radius=40
+4. `solidworks_create_extrusion` with depth=60
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -400,18 +422,21 @@ Create a new part. Sketch a 40mm radius circle on the Right plane and extrude it
 **Prompt:**
 
 ```
-On the Front plane, draw a regular pentagon with an inscribed circle radius of 25mm (the radius should measure to the midpoint of each side, not to a vertex). Center it at the origin. Extrude 15mm.
+Create a new part. On the Front plane, draw a regular pentagon with an inscribed circle radius of 25mm (the radius should measure to the midpoint of each side, not to a vertex). Center it at the origin. Extrude 15mm. Report the volume.
 ```
 
 **Expected outcome:**
 - A 5-sided regular polygon with inscribed=true and radius=25
 - Centered at origin
 - Extruded 15mm
+- **Expected volume: ~34,057 mm^3** (5 x 25^2 x tan(pi/5) x 15)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Front"
-2. `solidworks_sketch_polygon` with numSides=5, radius=25, inscribed=true
-3. `solidworks_create_extrusion` with depth=15
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_polygon` with numSides=5, radius=25, inscribed=true
+4. `solidworks_create_extrusion` with depth=15
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -520,18 +545,21 @@ On the Front plane, place three sketch points at (0, 0), (25, 25), and (50, 0). 
 **Prompt:**
 
 ```
-On the Front plane, draw a 40mm x 40mm square centered at the origin. Extrude it 50mm in the reverse direction (behind the Front plane).
+Create a new part. On the Front plane, draw a 40mm x 40mm square centered at the origin. Extrude it 50mm in the reverse direction (behind the Front plane). Report the volume.
 ```
 
 **Expected outcome:**
 - A 40x40mm rectangle on the Front plane
 - Extruded 50mm in the reverse direction (negative Z)
 - The solid should extend behind the Front plane
+- **Expected volume: 80,000 mm^3** (40 x 40 x 50)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Front"
-2. `solidworks_sketch_rectangle` with width=40, height=40, centerX=0, centerY=0
-3. `solidworks_create_extrusion` with depth=50, reverse=true
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=40, height=40, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=50, reverse=true
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -542,18 +570,21 @@ On the Front plane, draw a 40mm x 40mm square centered at the origin. Extrude it
 **Prompt:**
 
 ```
-On the Front plane, draw a rectangle with one corner at (10, 10) and the opposite corner at (60, 40). Extrude it 20mm.
+Create a new part. On the Front plane, draw a rectangle with one corner at (10, 10) and the opposite corner at (60, 40). Extrude it 20mm. Report the volume.
 ```
 
 **Expected outcome:**
 - A rectangle from corner (10, 10) to corner (60, 40)
 - Width: 50mm, Height: 30mm
 - Extruded 20mm
+- **Expected volume: 30,000 mm^3** (50 x 30 x 20)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Front"
-2. `solidworks_sketch_rectangle` with x1=10, y1=10, x2=60, y2=40
-3. `solidworks_create_extrusion` with depth=20
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with x1=10, y1=10, x2=60, y2=40
+4. `solidworks_create_extrusion` with depth=20
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -564,7 +595,7 @@ On the Front plane, draw a rectangle with one corner at (10, 10) and the opposit
 **Prompt:**
 
 ```
-Create an L-shaped bracket in SolidWorks. The vertical arm should be 60mm tall and 15mm wide. The horizontal arm should extend 40mm to the right and be 15mm wide. The overall shape looks like a capital "L". Sketch it on the Front plane using lines, then extrude it 10mm.
+Create a new part. Make an L-shaped bracket in SolidWorks. The vertical arm should be 60mm tall and 15mm wide. The horizontal arm should extend 40mm to the right and be 15mm wide. The overall shape looks like a capital "L". Sketch it on the Front plane using lines, then extrude it 10mm. Report the volume.
 
 Use these coordinates for the outline:
 - Start at (0, 0)
@@ -580,11 +611,14 @@ Use these coordinates for the outline:
 - An L-shaped closed profile made of 6 lines
 - Extruded 10mm to form a 3D L-bracket
 - Profile should be fully closed for the extrusion to succeed
+- **Expected volume: 12,750 mm^3** ((40x15 + 15x45) x 10)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Front"
-2. Six `solidworks_sketch_line` calls forming the closed L-shape
-3. `solidworks_create_extrusion` with depth=10
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. Six `solidworks_sketch_line` calls forming the closed L-shape
+4. `solidworks_create_extrusion` with depth=10
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -625,46 +659,53 @@ Don't extrude.
 **Prompt:**
 
 ```
-Create a washer (flat ring):
+Create a new part. Make a washer (flat ring):
 1. On the Front plane, sketch a circle with outer radius 20mm centered at the origin. Extrude it 3mm.
 2. Then create a sketch on the front face of the disc (at z=0) and draw a circle with radius 8mm centered at the origin. Cut-extrude it 3mm through the disc to create the hole.
+
+Report the final volume.
 ```
 
 **Expected outcome:**
 - A flat disc (outer radius 20mm, 3mm thick)
 - A through-hole in the center (radius 8mm)
 - Result: a washer shape
+- **Expected volume: ~3,167 mm^3** (pi x (20^2 - 8^2) x 3)
 
 **Tools that must be called:**
-1. `solidworks_create_sketch` with plane "Front"
-2. `solidworks_sketch_circle` with radius=20, centerX=0, centerY=0
-3. `solidworks_create_extrusion` with depth=3
-4. `solidworks_create_sketch` with faceX=0, faceY=0, faceZ=0
-5. `solidworks_sketch_circle` with radius=8, centerX=0, centerY=0
-6. `solidworks_create_cut_extrusion` with depth=3
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_circle` with radius=20, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=3
+5. `solidworks_create_sketch` with faceX=0, faceY=0, faceZ=0
+6. `solidworks_sketch_circle` with radius=8, centerX=0, centerY=0
+7. `solidworks_create_cut_extrusion` with depth=3
+8. `solidworks_get_mass_properties`
 
 ---
 
-## Test 27: Explicit New Part Before Sketch
+## Test 27: Explicit New Part on Top Plane
 
-**What it tests:** Using `solidworks_new_part` explicitly before starting a design.
+**What it tests:** Using `solidworks_new_part` explicitly and sketching on a non-Front plane.
 
 **Prompt:**
 
 ```
-Explicitly create a new blank part document first. Then open a sketch on the Top plane, draw a 35mm x 35mm square at the origin, and extrude it 35mm to make a cube.
+Create a new blank part document. Then open a sketch on the Top plane, draw a 35mm x 35mm square at the origin, and extrude it 35mm to make a cube. Report the volume.
 ```
 
 **Expected outcome:**
 - `solidworks_new_part` is called first
 - Sketch on Top plane
 - 35mm cube created
+- **Expected volume: 42,875 mm^3** (35 x 35 x 35)
 
 **Tools that must be called:**
 1. `solidworks_new_part`
 2. `solidworks_create_sketch` with plane "Top"
 3. `solidworks_sketch_rectangle` with width=35, height=35, centerX=0, centerY=0
 4. `solidworks_create_extrusion` with depth=35
+5. `solidworks_get_mass_properties`
 
 ---
 
@@ -698,7 +739,7 @@ On the Front plane, draw a 50mm radius circle at the origin. Exit the sketch wit
 **Prompt:**
 
 ```
-I need a simple phone stand. Create a rectangular base that's about 80mm wide, 50mm deep, and 5mm thick. Then add a vertical wall on one end that's about 80mm wide, 30mm tall, and 5mm thick — this wall will prop up the phone.
+Create a new part. I need a simple phone stand. Create a rectangular base that's about 80mm wide, 50mm deep, and 5mm thick. Then add a vertical wall on one end that's about 80mm wide, 30mm tall, and 5mm thick — this wall will prop up the phone. Report the final volume.
 ```
 
 **Expected outcome:**
@@ -706,13 +747,24 @@ I need a simple phone stand. Create a rectangular base that's about 80mm wide, 5
 - A base plate created as an extrusion (e.g., 80x50mm rectangle, extruded 5mm)
 - A vertical wall attached to one end (a second sketch on a face of the base, extruded upward)
 - The result should look like a simple L-shaped phone stand
-- The agent may need to use face-based sketching for the wall
+- **Expected volume: ~32,000 mm^3** (80x50x5 base + 80x30x5 wall = 20,000 + 12,000)
 
 **Evaluation criteria:**
 - Does the agent plan a reasonable multi-step approach?
 - Does it choose correct planes/faces for each feature?
 - Are the dimensions roughly matching the request?
 - Does the final shape function as described?
+- Does the reported volume approximate the expected value?
+
+**Tools that must be called:**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` (base)
+3. `solidworks_sketch_rectangle` (base profile)
+4. `solidworks_create_extrusion` (base)
+5. `solidworks_create_sketch` (wall — on a face)
+6. `solidworks_sketch_rectangle` (wall profile)
+7. `solidworks_create_extrusion` (wall)
+8. `solidworks_get_mass_properties`
 
 ---
 
@@ -723,7 +775,7 @@ I need a simple phone stand. Create a rectangular base that's about 80mm wide, 5
 **Prompt:**
 
 ```
-Create a new part. Immediately try to extrude 50mm without creating a sketch first. After that fails, properly create a sketch on the Front plane with a 30mm x 30mm rectangle and extrude it 50mm.
+Create a new part. Immediately try to extrude 50mm without creating a sketch first. After that fails, properly create a sketch on the Front plane with a 30mm x 30mm rectangle and extrude it 50mm. Report the volume.
 ```
 
 **Expected outcome:**
@@ -732,11 +784,129 @@ Create a new part. Immediately try to extrude 50mm without creating a sketch fir
 - Agent creates a proper sketch with a rectangle
 - Second extrusion succeeds
 - Final result: a 30x30x50mm rectangular block
+- **Expected volume: 45,000 mm^3** (30 x 30 x 50)
 
 **Evaluation criteria:**
 - Does the agent attempt the extrusion as requested?
 - Does it handle the error gracefully?
 - Does it successfully recover and complete the part?
+- Does the reported volume match the expected value?
+
+**Tools that must be called:**
+1. `solidworks_new_part`
+2. `solidworks_create_extrusion` with depth=50 (this should fail)
+3. `solidworks_create_sketch` with plane "Front"
+4. `solidworks_sketch_rectangle` with width=30, height=30, centerX=0, centerY=0
+5. `solidworks_create_extrusion` with depth=50
+6. `solidworks_get_mass_properties`
+
+---
+
+## Test 31: Comprehensive 2D Sketch (Every Sketch Tool)
+
+**What it tests:** Every 2D sketch entity tool, every positioning mode, constraints, construction geometry, and shape info queries — all in one sketch. This is the ultimate sketch capability test.
+
+**Prompt:**
+
+```
+Create a new part and open a sketch on the Front plane. Build the following sketch step by step. Do NOT extrude — this is a 2D sketch test only.
+
+1. Draw a 60mm x 40mm rectangle centered at (-80, 0). This is the main reference shape.
+
+2. Query the last shape info to confirm the rectangle's bounding box.
+
+3. Draw a circle with radius 15mm, spaced 10mm to the right of the rectangle (use the spacing parameter).
+
+4. Draw a regular octagon (8 sides) with radius 12mm, spaced 10mm to the right of the circle.
+
+5. Draw an ellipse centered at (80, 0) with semi-major axis 25mm, semi-minor axis 12mm, rotated 30 degrees.
+
+6. Draw a slot from (-80, -50) to (-30, -50) with width 12mm.
+
+7. Draw a line from (0, -50) to (50, -50).
+
+8. Draw a second line from (0, -65) to (50, -58) — intentionally slightly angled.
+
+9. Apply a PARALLEL constraint between the two lines (step 7 and step 8).
+
+10. Draw a 3-point arc from (60, -50) to (100, -50) with midpoint at (80, -35).
+
+11. Draw a center-point arc with center (80, -70), start (95, -70), end (80, -55).
+
+12. Draw a spline through these points: (-80, 50), (-60, 65), (-40, 55), (-20, 70), (0, 50).
+
+13. Draw a vertical centerline from (40, 30) to (40, 70).
+
+14. Draw a horizontal line from (20, 50) to (60, 50).
+
+15. Toggle that horizontal line (step 14) to construction geometry.
+
+16. Place a sketch point at (0, 0) as a reference origin marker.
+
+17. Insert the text "TEST" at position (-80, 80) with a height of 8mm.
+
+18. Draw a 50mm x 20mm rectangle positioned 15mm to the right of the ellipse from step 5 (use relativeX=15 to offset from the ellipse's center).
+
+19. Query the last shape info to confirm the final rectangle's position.
+
+After all entities are drawn, exit the sketch.
+```
+
+**Expected outcome:**
+
+This sketch should contain ALL of the following entity types:
+- **Rectangle** (steps 1, 18) — absolute positioning and relative positioning
+- **Circle** (step 3) — spacing-based positioning
+- **Polygon** (step 4) — spacing-based positioning, 8 sides
+- **Ellipse** (step 5) — with rotation angle
+- **Slot** (step 6) — explicit coordinates
+- **Line** (steps 7, 8, 14) — explicit coordinates
+- **Constraint** (step 9) — PARALLEL between two lines
+- **3-point arc** (step 10) — explicit coordinates
+- **Center-point arc** (step 11) — center + endpoints
+- **Spline** (step 12) — 5 control points
+- **Centerline** (step 13) — construction geometry
+- **Toggle construction** (step 15) — convert normal line to construction
+- **Point** (step 16) — reference point
+- **Text** (step 17) — sketch annotation
+- **get_last_shape_info** (steps 2, 19) — spatial tracking queries
+- **exit_sketch** (final step) — explicit sketch exit
+
+**Positioning modes covered:**
+- Absolute centerX/centerY (steps 1, 5)
+- Spacing from last shape (steps 3, 4)
+- relativeX/relativeY offset (step 18)
+- Explicit x1,y1,x2,y2 coordinates (steps 6, 7, 8, 10, 11, 13, 14)
+
+**Detailed position verification:**
+- Step 1 rectangle: center (-80, 0), bounds [-110, -50] x [-20, 20]
+- Step 3 circle: right edge of rectangle is -50, so circle center = -50 + 10 + 15 = -25, y = 0
+- Step 4 octagon: right edge of circle is -10, so octagon center = -10 + 10 + 12 = 12, y = 0
+- Step 18 rectangle: ellipse center is (80, 0), so rect center = (80 + 15, 0) = (95, 0)
+
+**Tools that must be called:**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` — centerX=-80, centerY=0, width=60, height=40
+4. `solidworks_get_last_shape_info`
+5. `solidworks_sketch_circle` — radius=15, spacing=10
+6. `solidworks_sketch_polygon` — numSides=8, radius=12, spacing=10
+7. `solidworks_sketch_ellipse` — centerX=80, centerY=0, majorRadius=25, minorRadius=12, angle=30
+8. `solidworks_sketch_slot` — x1=-80, y1=-50, x2=-30, y2=-50, width=12
+9. `solidworks_sketch_line` — x1=0, y1=-50, x2=50, y2=-50
+10. `solidworks_sketch_line` — x1=0, y1=-65, x2=50, y2=-58
+11. `solidworks_sketch_constraint` — constraintType="PARALLEL", entityPoints on both lines
+12. `solidworks_sketch_arc` — mode="3point", x1=60, y1=-50, x2=100, y2=-50, x3=80, y3=-35
+13. `solidworks_sketch_arc` — mode="center", centerX=80, centerY=-70, x1=95, y1=-70, x2=80, y2=-55
+14. `solidworks_sketch_spline` — 5 points
+15. `solidworks_sketch_centerline` — x1=40, y1=30, x2=40, y2=70
+16. `solidworks_sketch_line` — x1=20, y1=50, x2=60, y2=50
+17. `solidworks_sketch_toggle_construction` — x=40, y=50
+18. `solidworks_sketch_point` — x=0, y=0
+19. `solidworks_sketch_text` — x=-80, y=80, text="TEST", height=8
+20. `solidworks_sketch_rectangle` — relativeX=15, width=50, height=20
+21. `solidworks_get_last_shape_info`
+22. `solidworks_exit_sketch`
 
 ---
 
@@ -744,9 +914,9 @@ Create a new part. Immediately try to extrude 50mm without creating a sketch fir
 
 | Score | Meaning |
 |-------|---------|
-| **Pass** | All required tools were called with correct parameters; the result matches expected outcome |
-| **Partial** | The right tools were called but with imprecise parameters (e.g., wrong center, missing positioning); the result is close but not exact |
-| **Fail** | Wrong tools used, incorrect workflow order, missing critical steps, or SolidWorks errors not recovered |
+| **Pass** | All required tools were called with correct parameters; the result matches expected outcome; reported volume is within 1% of expected |
+| **Partial** | The right tools were called but with imprecise parameters (e.g., wrong center, missing positioning); the result is close but not exact; volume is off by more than 1% |
+| **Fail** | Wrong tools used, incorrect workflow order, missing critical steps, SolidWorks errors not recovered, or volume not reported when required |
 
 ### Category Breakdown
 
@@ -759,3 +929,25 @@ Create a new part. Immediately try to extrude 50mm without creating a sketch fir
 | **3D Operations** | 14, 15, 16, 22, 26 | extrusion, cut-extrusion, reverse, mass_properties, face sketching |
 | **Complex / Natural Language** | 24, 29 | Multi-entity profiles, interpreting descriptions |
 | **Error Handling** | 30 | Recovery from tool failures |
+| **Comprehensive 2D** | 31 | Every sketch tool in a single test |
+
+### Volume Verification Summary
+
+| Test | Geometry | Expected Volume (mm^3) |
+|------|----------|----------------------|
+| 1 | 100mm cube | 1,000,000 |
+| 2 | 50mm dia x 75mm cylinder | ~147,262 |
+| 3 | 30mm hex prism x 40mm | ~93,531 |
+| 4 | 40x25mm ellipse x 5mm | ~15,708 |
+| 5 | Slot 60x20mm x 10mm | ~15,142 |
+| 14 | 80x60x30 block - 20mm dia hole | ~134,575 |
+| 15 | 100mm cube | 1,000,000 |
+| 16 | 40mm radius x 60mm cylinder | ~301,593 |
+| 17 | 25mm inscribed pentagon x 15mm | ~34,057 |
+| 22 | 40x40mm x 50mm (reverse) | 80,000 |
+| 23 | 50x30mm x 20mm (corners) | 30,000 |
+| 24 | L-bracket x 10mm | 12,750 |
+| 26 | Washer 20mm/8mm x 3mm | ~3,167 |
+| 27 | 35mm cube | 42,875 |
+| 29 | Phone stand (approximate) | ~32,000 |
+| 30 | 30x30mm x 50mm (recovery) | 45,000 |
