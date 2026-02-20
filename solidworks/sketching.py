@@ -35,9 +35,20 @@ class SketchingTools:
                             "type": "string",
                             "enum": ["Front", "Top", "Right"],
                             "description": "Reference plane for sketch"
+                        },
+                        "faceX": {
+                            "type": "number",
+                            "description": "X coordinate (mm) of a point on the solid face to sketch on. Use with faceY and faceZ to create a sketch on an existing solid face instead of a reference plane."
+                        },
+                        "faceY": {
+                            "type": "number",
+                            "description": "Y coordinate (mm) of a point on the solid face to sketch on."
+                        },
+                        "faceZ": {
+                            "type": "number",
+                            "description": "Z coordinate (mm) of a point on the solid face to sketch on."
                         }
-                    },
-                    "required": ["plane"]
+                    }
                 }
             ),
             Tool(
@@ -163,17 +174,24 @@ class SketchingTools:
             raise Exception(f"Unknown sketching tool: {tool_name}")
     
     def create_sketch(self, args: dict) -> str:
-        """Create sketch on specified plane"""
-        plane_name = args["plane"]
+        """Create sketch on a reference plane or a solid face.
+
+        If faceX/faceY/faceZ are provided, selects the solid face at that point
+        (in mm, converted to metres internally) and opens a sketch on it.
+        Otherwise, uses the named reference plane ("Front", "Top", or "Right").
+        Face-based sketches are required for cut-extrusions to work.
+        """
         plane_map = {
             "Front": "Front Plane",
             "Top": "Top Plane",
             "Right": "Right Plane"
         }
-        
+
+        face_mode = "faceX" in args and "faceY" in args and "faceZ" in args
+
         # Check for active document
         doc = self.connection.get_active_doc()
-        
+
         if not doc:
             logger.info("No active document. Creating new part...")
             doc = self.connection.create_new_part()
@@ -187,29 +205,46 @@ class SketchingTools:
             self.created_shapes = []
             self.last_shape = None
             created_new = False
-        
-        # Get the plane feature
-        plane_feature_name = plane_map[plane_name]
-        plane_feature = doc.FeatureByName(plane_feature_name)
-        
-        if not plane_feature:
-            raise Exception(f"Could not find {plane_feature_name}")
-        
-        # Select and create sketch
+
         doc.ClearSelection2(True)
-        plane_feature.Select2(False, 0)
-        doc.SketchManager.InsertSketch(True)
-        
+
+        if face_mode:
+            # Select solid face by a point on it (coordinates in mm → metres)
+            x_m = args["faceX"] / 1000.0
+            y_m = args["faceY"] / 1000.0
+            z_m = args["faceZ"] / 1000.0
+            import win32com.client as _wc
+            import pythoncom as _pc
+            callout = _wc.VARIANT(_pc.VT_DISPATCH, None)
+            ok = doc.Extension.SelectByID2('', 'FACE', x_m, y_m, z_m, False, 0, callout, 0)
+            if not ok:
+                raise Exception(
+                    f"Could not select face at ({args['faceX']}, {args['faceY']}, {args['faceZ']}) mm"
+                )
+            doc.SketchManager.InsertSketch(True)
+            location = f"face at ({args['faceX']}, {args['faceY']}, {args['faceZ']}) mm"
+        else:
+            plane_name = args.get("plane", "Front")
+            plane_feature_name = plane_map.get(plane_name)
+            if not plane_feature_name:
+                raise Exception(f"Unknown plane: {plane_name}")
+            plane_feature = doc.FeatureByName(plane_feature_name)
+            if not plane_feature:
+                raise Exception(f"Could not find {plane_feature_name}")
+            plane_feature.Select2(False, 0)
+            doc.SketchManager.InsertSketch(True)
+            location = f"{plane_name} plane"
+
         # Track sketch
         self.sketch_counter += 1
         self.current_sketch_name = f"Sketch{self.sketch_counter}"
-        
-        logger.info(f"Sketch created: {self.current_sketch_name} on {plane_name}")
-        
+
+        logger.info(f"Sketch created: {self.current_sketch_name} on {location}")
+
         if created_new:
-            return f"✓ New part created. Sketch on {plane_name} plane"
+            return f"✓ New part created. Sketch on {location}"
         else:
-            return f"✓ Sketch created on {plane_name} plane"
+            return f"✓ Sketch created on {location}"
     
     def _calculate_position(self, args: dict, shape_width: float, shape_height: float) -> tuple:
         """Calculate position based on absolute or relative coordinates"""

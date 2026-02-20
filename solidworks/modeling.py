@@ -74,7 +74,7 @@ class ModelingTools:
             features = doc.FeatureManager.GetFeatures(True)
             if features:
                 for feature in reversed(features):
-                    if feature.GetTypeName2() == "ProfileFeature":
+                    if feature.GetTypeName2 == "ProfileFeature":
                         name = feature.Name
                         logger.info(f"Latest sketch found in feature tree: {name}")
                         return name
@@ -177,17 +177,12 @@ class ModelingTools:
         if not doc:
             raise Exception("No active document")
 
-        # Exit sketch mode
-        doc.ClearSelection2(True)
-        doc.SketchManager.InsertSketch(True)
-
         # Get current sketch name from sketching tools
         if sketching_tools and sketching_tools.current_sketch_name:
             sketch_name = sketching_tools.current_sketch_name
         else:
             sketch_name = self._get_latest_sketch_name(doc)
 
-        # Select the sketch
         sketch_feature = doc.FeatureByName(sketch_name)
         if not sketch_feature:
             raise Exception(f"Could not find sketch: {sketch_name}")
@@ -199,31 +194,40 @@ class ModelingTools:
         depth = args["depth"] / 1000.0
         reverse = args.get("reverse", False)
 
-        # Create cut-extrusion: Sd=False removes material instead of adding it
-        feature = doc.FeatureManager.FeatureExtrusion2(
-            False,     # Sd = False → cut (removes material)
-            reverse,   # Flip direction
+        # FeatureCut4 parameter names from sldworks.tlb (SW 2025 v33, 27 params):
+        # Sd, Flip, Dir, T1, T2, D1, D2, Dchk1, Dchk2, Ddir1, Ddir2, Dang1, Dang2,
+        # OffsetReverse1, OffsetReverse2, TranslateSurface1, TranslateSurface2,
+        # NormalCut, UseFeatScope, UseAutoSelect,
+        # AssemblyFeatureScope, AutoSelectComponents, PropagateFeatureToParts,
+        # T0, StartOffset, FlipStartOffset, OptimizeGeometry
+        feature = doc.FeatureManager.FeatureCut4(
+            True,      # Sd
+            reverse,   # Flip
             False,     # Dir
-            0,         # T1 (end condition type - 0 = Blind)
+            0,         # T1 (Blind)
             0,         # T2
-            depth,     # D1 (depth in meters)
+            depth,     # D1
             0.0,       # D2
-            False,     # DDir
-            False,     # Dang
+            False,     # Dchk1
+            False,     # Dchk2
+            False,     # Ddir1
+            False,     # Ddir2
+            0.0,       # Dang1
+            0.0,       # Dang2
             False,     # OffsetReverse1
             False,     # OffsetReverse2
-            0.0,       # Dang1 (draft angle 1)
-            0.0,       # Dang2 (draft angle 2)
-            False,     # T1UseLen
-            False,     # T2UseLen
-            False,     # T3UseLen
-            False,     # T4UseLen
-            True,      # T1UseLen2
-            True,      # T2UseLen2
-            True,      # T3UseLen2
-            0,         # MergeSmooth
-            0,         # StartCond
-            False      # ContourType
+            False,     # TranslateSurface1
+            False,     # TranslateSurface2
+            False,     # NormalCut
+            False,     # UseFeatScope
+            True,      # UseAutoSelect
+            False,     # AssemblyFeatureScope
+            True,      # AutoSelectComponents
+            False,     # PropagateFeatureToParts
+            0,         # T0
+            0.0,       # StartOffset
+            False,     # FlipStartOffset
+            False      # OptimizeGeometry
         )
 
         if not feature:
