@@ -74,3 +74,163 @@
 2026-02-19 20:28:20,034 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
 2026-02-19 20:28:20,036 - __main__ - INFO - Tool called: solidworks_create_extrusion with arguments: {'depth': 6, 'reverse': True}
 2026-02-19 20:28:20,869 - solidworks.modeling - INFO - Extrusion created: 6mm
+2026-02-20 07:31:02,956 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:02,956 - solidworks.sketching - INFO - Sketch created: Sketch1 on Front plane
+2026-02-20 07:31:02,957 - solidworks.sketching - INFO - Rectangle: 50mm x 30mm at (0.0, 0.0)
+2026-02-20 07:31:02,957 - solidworks.sketching - INFO - Circle: radius 25mm at (0.0, 0.0)
+2026-02-20 07:31:02,957 - solidworks.sketching - INFO - Line: (0, 0) to (50, 50) mm
+2026-02-20 07:31:02,957 - solidworks.sketching - INFO - Centerline: (-50, 0) to (50, 0) mm
+2026-02-20 07:31:02,957 - solidworks.sketching - INFO - 3-point arc: (0,0), (50,0), (25,25) mm
+2026-02-20 07:31:02,957 - solidworks.sketching - INFO - Spline: 2 points
+2026-02-20 07:31:02,957 - solidworks.sketching - INFO - Ellipse: 30x20mm at (0.0, 0.0), angle 0
+2026-02-20 07:31:02,957 - solidworks.sketching - INFO - Polygon: 6 sides, radius 25mm at (0.0, 0.0)
+2026-02-20 07:31:02,957 - solidworks.sketching - INFO - Slot: (-25,0) to (25,0), width 20mm
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Point: (10, 10) mm
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Text: 'Hello' at (0, 0) mm, height 5mm
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Constraint 'HORIZONTAL' applied
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Entity at (25, 25) mm toggled to construction
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Exited sketch
+2026-02-20 07:31:02,958 - solidworks.modeling - INFO - New part document created
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Sketch created: Sketch1 on Front plane
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Rectangle: 100mm x 100mm at (0.0, 0.0)
+2026-02-20 07:31:02,958 - solidworks.modeling - INFO - Extrusion created: 100mm
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Sketch created: Sketch2 on Front plane
+2026-02-20 07:31:02,958 - solidworks.sketching - INFO - Circle: radius 20mm at (0.0, 0.0)
+2026-02-20 07:31:02,958 - solidworks.modeling - INFO - Cut-extrusion created: 50mm
+2026-02-20 07:31:02,958 - solidworks.modeling - INFO - Mass properties: mass=7.850000kg, volume=1000.00mm^3
+2026-02-20 07:31:02,959 - solidworks.sketching - INFO - Rectangle: 80mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Circle: radius 25mm at (0.0, 0.0)
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Line: (10, 20) to (60, 80) mm
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Rectangle: 50mm x 50mm at (0.0, 0.0)
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Point: (100, 100) mm
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Rectangle: 50mm x 50mm at (0.0, 0.0)
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Centerline: (-50, 0) to (50, 0) mm
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Rectangle: 50mm x 50mm at (0.0, 0.0)
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Text: 'Test' at (0, 0) mm, height 5mm
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Rectangle: 50mm x 50mm at (0.0, 0.0)
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Circle: radius 25mm at (100.0, 0.0)
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Point: (0, 0) mm
+2026-02-20 07:31:02,960 - solidworks.sketching - INFO - Line: (0, 0) to (50, 50) mm
+2026-02-20 07:31:02,961 - solidworks.sketching - INFO - Rectangle: 80mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:02,961 - solidworks.sketching - INFO - Rectangle: 80mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:02,961 - solidworks.sketching - INFO - Rectangle: 80mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:02,961 - solidworks.modeling - INFO - New part document created
+2026-02-20 07:31:02,961 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:02,961 - solidworks.sketching - INFO - Sketch created: Sketch1 on Front plane
+2026-02-20 07:31:02,961 - solidworks.sketching - INFO - Rectangle: 100mm x 100mm at (0.0, 0.0)
+2026-02-20 07:31:02,961 - solidworks.sketching - INFO - Exited sketch
+2026-02-20 07:31:02,961 - solidworks.modeling - INFO - Extrusion created: 100mm
+2026-02-20 07:31:02,961 - solidworks.sketching - INFO - Rectangle: 80mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:02,961 - solidworks.sketching - INFO - Circle: radius 20mm at (70.0, 0.0)
+2026-02-20 07:31:02,961 - solidworks.sketching - INFO - Rectangle: 100mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:02,962 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:02,962 - solidworks.sketching - INFO - Sketch created: Sketch1 on Front plane
+2026-02-20 07:31:02,962 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:02,962 - solidworks.sketching - INFO - Sketch created: Sketch2 on Top plane
+2026-02-20 07:31:02,962 - solidworks.sketching - INFO - 3-point arc: (0,0), (50,0), (25,25) mm
+2026-02-20 07:31:02,962 - solidworks.sketching - INFO - Center-point arc: center (0,0), radius 25.0 mm
+2026-02-20 07:31:02,962 - solidworks.sketching - INFO - Polygon: 6 sides, radius 30mm at (0.0, 0.0)
+2026-02-20 07:31:02,962 - solidworks.sketching - INFO - Ellipse: 30x15mm at (10.0, 20.0), angle 0
+2026-02-20 07:31:02,962 - solidworks.sketching - INFO - Slot: (-25,0) to (25,0), width 20mm
+2026-02-20 07:31:02,962 - solidworks.sketching - INFO - Spline: 3 points
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Rectangle: 50mm x 30mm at (0.0, 0.0)
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Circle: radius 20mm at (0.0, 0.0)
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Line: (0, 0) to (50, 50) mm
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Centerline: (-50, 0) to (50, 0) mm
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Point: (10, 10) mm
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Polygon: 6 sides, radius 25mm at (0.0, 0.0)
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Ellipse: 30x20mm at (0.0, 0.0), angle 0
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Slot: (-25,0) to (25,0), width 20mm
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Sketch created: Sketch1 on Front plane
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Sketch created: Sketch2 on Top plane
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:02,963 - solidworks.sketching - INFO - Sketch created: Sketch3 on Right plane
+2026-02-20 07:31:02,964 - solidworks.modeling - INFO - Mass properties: mass=7.850000kg, volume=1000.00mm^3
+2026-02-20 07:31:02,964 - solidworks.sketching - INFO - Rectangle: 50mm x 50mm at (0.0, 0.0)
+2026-02-20 07:31:02,964 - solidworks.sketching - INFO - Circle: radius 20mm at (100.0, 0.0)
+2026-02-20 07:31:02,964 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:02,964 - solidworks.sketching - INFO - Sketch created: Sketch1 on Top plane
+2026-02-20 07:31:26,908 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:26,908 - solidworks.sketching - INFO - Sketch created: Sketch1 on Front plane
+2026-02-20 07:31:26,909 - solidworks.sketching - INFO - Rectangle: 50mm x 30mm at (0.0, 0.0)
+2026-02-20 07:31:26,909 - solidworks.sketching - INFO - Circle: radius 25mm at (0.0, 0.0)
+2026-02-20 07:31:26,909 - solidworks.sketching - INFO - Line: (0, 0) to (50, 50) mm
+2026-02-20 07:31:26,909 - solidworks.sketching - INFO - Centerline: (-50, 0) to (50, 0) mm
+2026-02-20 07:31:26,909 - solidworks.sketching - INFO - 3-point arc: (0,0), (50,0), (25,25) mm
+2026-02-20 07:31:26,909 - solidworks.sketching - INFO - Spline: 2 points
+2026-02-20 07:31:26,910 - solidworks.sketching - INFO - Ellipse: 30x20mm at (0.0, 0.0), angle 0
+2026-02-20 07:31:26,910 - solidworks.sketching - INFO - Polygon: 6 sides, radius 25mm at (0.0, 0.0)
+2026-02-20 07:31:26,910 - solidworks.sketching - INFO - Slot: (-25,0) to (25,0), width 20mm
+2026-02-20 07:31:26,910 - solidworks.sketching - INFO - Point: (10, 10) mm
+2026-02-20 07:31:26,910 - solidworks.sketching - INFO - Text: 'Hello' at (0, 0) mm, height 5mm
+2026-02-20 07:31:26,910 - solidworks.sketching - INFO - Constraint 'HORIZONTAL' applied
+2026-02-20 07:31:26,910 - solidworks.sketching - INFO - Entity at (25, 25) mm toggled to construction
+2026-02-20 07:31:26,910 - solidworks.sketching - INFO - Exited sketch
+2026-02-20 07:31:26,911 - solidworks.modeling - INFO - New part document created
+2026-02-20 07:31:26,911 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:26,911 - solidworks.sketching - INFO - Sketch created: Sketch1 on Front plane
+2026-02-20 07:31:26,911 - solidworks.sketching - INFO - Rectangle: 100mm x 100mm at (0.0, 0.0)
+2026-02-20 07:31:26,911 - solidworks.modeling - INFO - Extrusion created: 100mm
+2026-02-20 07:31:26,911 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:26,911 - solidworks.sketching - INFO - Sketch created: Sketch2 on Front plane
+2026-02-20 07:31:26,911 - solidworks.sketching - INFO - Circle: radius 20mm at (0.0, 0.0)
+2026-02-20 07:31:26,911 - solidworks.modeling - INFO - Cut-extrusion created: 50mm
+2026-02-20 07:31:26,911 - solidworks.modeling - INFO - Mass properties: mass=7.850000kg, volume=1000000.00mm^3
+2026-02-20 07:31:26,912 - solidworks.sketching - INFO - Rectangle: 80mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:26,912 - solidworks.sketching - INFO - Circle: radius 25mm at (0.0, 0.0)
+2026-02-20 07:31:26,912 - solidworks.sketching - INFO - Line: (10, 20) to (60, 80) mm
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Rectangle: 50mm x 50mm at (0.0, 0.0)
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Point: (100, 100) mm
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Rectangle: 50mm x 50mm at (0.0, 0.0)
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Centerline: (-50, 0) to (50, 0) mm
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Rectangle: 50mm x 50mm at (0.0, 0.0)
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Text: 'Test' at (0, 0) mm, height 5mm
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Rectangle: 50mm x 50mm at (0.0, 0.0)
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Circle: radius 25mm at (100.0, 0.0)
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Point: (0, 0) mm
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Line: (0, 0) to (50, 50) mm
+2026-02-20 07:31:26,913 - solidworks.sketching - INFO - Rectangle: 80mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Rectangle: 80mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Rectangle: 80mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:26,914 - solidworks.modeling - INFO - New part document created
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Sketch created: Sketch1 on Front plane
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Rectangle: 100mm x 100mm at (0.0, 0.0)
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Exited sketch
+2026-02-20 07:31:26,914 - solidworks.modeling - INFO - Extrusion created: 100mm
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Rectangle: 80mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Circle: radius 20mm at (70.0, 0.0)
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Rectangle: 100mm x 60mm at (0.0, 0.0)
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Sketch created: Sketch1 on Front plane
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:26,914 - solidworks.sketching - INFO - Sketch created: Sketch2 on Top plane
+2026-02-20 07:31:26,915 - solidworks.sketching - INFO - 3-point arc: (0,0), (50,0), (25,25) mm
+2026-02-20 07:31:26,915 - solidworks.sketching - INFO - Center-point arc: center (0,0), radius 25.0 mm
+2026-02-20 07:31:26,915 - solidworks.sketching - INFO - Polygon: 6 sides, radius 30mm at (0.0, 0.0)
+2026-02-20 07:31:26,915 - solidworks.sketching - INFO - Ellipse: 30x15mm at (10.0, 20.0), angle 0
+2026-02-20 07:31:26,915 - solidworks.sketching - INFO - Slot: (-25,0) to (25,0), width 20mm
+2026-02-20 07:31:26,915 - solidworks.sketching - INFO - Spline: 3 points
+2026-02-20 07:31:26,915 - solidworks.sketching - INFO - Rectangle: 50mm x 30mm at (0.0, 0.0)
+2026-02-20 07:31:26,915 - solidworks.sketching - INFO - Circle: radius 20mm at (0.0, 0.0)
+2026-02-20 07:31:26,915 - solidworks.sketching - INFO - Line: (0, 0) to (50, 50) mm
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Centerline: (-50, 0) to (50, 0) mm
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Point: (10, 10) mm
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Polygon: 6 sides, radius 25mm at (0.0, 0.0)
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Ellipse: 30x20mm at (0.0, 0.0), angle 0
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Slot: (-25,0) to (25,0), width 20mm
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Sketch created: Sketch1 on Front plane
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Sketch created: Sketch2 on Top plane
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:26,916 - solidworks.sketching - INFO - Sketch created: Sketch3 on Right plane
+2026-02-20 07:31:26,916 - solidworks.modeling - INFO - Mass properties: mass=7.850000kg, volume=1000000.00mm^3
+2026-02-20 07:31:26,917 - solidworks.sketching - INFO - Rectangle: 50mm x 50mm at (0.0, 0.0)
+2026-02-20 07:31:26,917 - solidworks.sketching - INFO - Circle: radius 20mm at (100.0, 0.0)
+2026-02-20 07:31:26,917 - solidworks.sketching - INFO - Using existing document
+2026-02-20 07:31:26,917 - solidworks.sketching - INFO - Sketch created: Sketch1 on Top plane
