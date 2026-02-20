@@ -86,7 +86,8 @@ class SolidWorksMCPServer:
             return self.sketching.execute(name, arguments)
         
         # Modeling tools
-        elif name in ["solidworks_new_part", "solidworks_create_extrusion"]:
+        elif name in ["solidworks_new_part", "solidworks_create_extrusion",
+                      "solidworks_create_cut_extrusion"]:
             return self.modeling.execute(name, arguments, self.sketching)
         
         else:
