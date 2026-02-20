@@ -910,6 +910,468 @@ This sketch should contain ALL of the following entity types:
 
 ---
 
+## Test 32: Revolve — Solid Cylinder (Boss/Base Features)
+
+**What it tests:** Creating a solid of revolution using a closed profile and a centerline axis.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a closed rectangular profile using 4 lines: (0, -25) to (20, -25), (20, -25) to (20, 25), (20, 25) to (0, 25), (0, 25) to (0, -25). Then draw a vertical centerline from (0, -50) to (0, 50). Revolve the sketch 360 degrees to create a solid cylinder. Report the volume.
+```
+
+**Expected outcome:**
+- A closed rectangle from x=0..20, y=-25..25 drawn with 4 lines
+- A vertical centerline along the Y-axis
+- Full 360° revolve creates a solid cylinder of radius 20mm and height 50mm
+- **Expected volume: ~62,832 mm^3** (pi x 20^2 x 50)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_line` with x1=0, y1=-25, x2=20, y2=-25
+4. `solidworks_sketch_line` with x1=20, y1=-25, x2=20, y2=25
+5. `solidworks_sketch_line` with x1=20, y1=25, x2=0, y2=25
+6. `solidworks_sketch_line` with x1=0, y1=25, x2=0, y2=-25
+7. `solidworks_sketch_centerline` with x1=0, y1=-50, x2=0, y2=50
+8. `solidworks_revolve` (angle=360)
+9. `solidworks_get_mass_properties`
+
+---
+
+## Test 33: Sweep — Circular Rod (Boss/Base Features)
+
+**What it tests:** Sweeping a profile sketch along a path sketch on a different plane.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a circle with radius 8mm centered at the origin — this is the sweep profile. Exit the sketch. Then open a new sketch on the Right plane and draw a straight line from (0, 0) to (80, 0) — this is the sweep path. Sweep the profile (Sketch1) along the path (Sketch2) to create a rod. Report the volume.
+```
+
+**Expected outcome:**
+- Sketch1 on Front plane: circle R=8 (profile cross-section)
+- Sketch2 on Right plane: 80mm line (path, extends along world Z-axis)
+- Sweep creates a cylindrical rod 80mm long with circular cross-section R=8
+- **Expected volume: ~16,085 mm^3** (pi x 8^2 x 80)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_circle` with radius=8, centerX=0, centerY=0
+4. `solidworks_exit_sketch`
+5. `solidworks_create_sketch` with plane "Right"
+6. `solidworks_sketch_line` with x1=0, y1=0, x2=80, y2=0
+7. `solidworks_sweep` with profileSketch="Sketch1", pathSketch="Sketch2"
+8. `solidworks_get_mass_properties`
+
+---
+
+## Test 34: Loft — Truncated Cone (Boss/Base Features)
+
+**What it tests:** Creating a lofted solid between two profiles on parallel planes. Uses an auxiliary body workaround since `create_sketch` only supports Front/Top/Right planes and face-based sketching.
+
+**Prompt:**
+
+```
+Create a new part. This test creates a truncated cone (frustum) using a loft.
+
+Step 1 — Helper rod: On the Front plane, draw a circle with radius 1mm at the origin and extrude it 80mm. This gives us a face at z=80 for sketching.
+
+Step 2 — First profile: On the Front plane, draw a circle with radius 30mm at the origin. Exit the sketch without extruding (this becomes Sketch2).
+
+Step 3 — Second profile: Open a sketch on the back face of the helper rod at coordinates (0, 0, 80). Draw a circle with radius 10mm centered at (0, 0). Exit the sketch without extruding (this becomes Sketch3).
+
+Step 4 — Loft: Create a loft between Sketch2 and Sketch3.
+
+Report the volume.
+```
+
+**Expected outcome:**
+- Helper rod: 1mm radius cylinder, 80mm long (fully contained within the final loft shape)
+- Loft profile 1 (Sketch2): circle R=30 at z=0 on Front plane
+- Loft profile 2 (Sketch3): circle R=10 at z=80 on the rod's back face
+- Loft merges with the helper rod; since the rod (R=1) is fully inside the cone (narrowest R=10), the merged volume equals the cone volume
+- Result: truncated cone from R=30 to R=10 over 80mm
+- **Expected volume: ~108,909 mm^3** (pi x h/3 x (R1^2 + R1 x R2 + R2^2) = pi x 80/3 x (900 + 300 + 100))
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_circle` with radius=1, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=80
+5. `solidworks_create_sketch` with plane "Front"
+6. `solidworks_sketch_circle` with radius=30, centerX=0, centerY=0
+7. `solidworks_exit_sketch`
+8. `solidworks_create_sketch` with faceX=0, faceY=0, faceZ=80
+9. `solidworks_sketch_circle` with radius=10, centerX=0, centerY=0
+10. `solidworks_exit_sketch`
+11. `solidworks_loft` with profileSketches=["Sketch2", "Sketch3"]
+12. `solidworks_get_mass_properties`
+
+---
+
+## Test 35: Fillet — Rounded Cube Edges (Applied Features)
+
+**What it tests:** Applying a constant-radius fillet to multiple edges selected by 3D coordinates.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a 100mm x 100mm rectangle centered at the origin and extrude it 100mm to create a cube. Then apply a 10mm radius fillet to all 4 vertical edges (the edges running along the Z-axis at the corners). The 4 vertical edge midpoints are at (50, 50, 50), (-50, 50, 50), (-50, -50, 50), and (50, -50, 50). Report the volume.
+```
+
+**Expected outcome:**
+- 100mm cube from (-50, -50, 0) to (50, 50, 100)
+- 4 vertical edges filleted with R=10mm
+- Each fillet removes a corner and replaces it with a quarter-cylinder: volume removed per edge = (R^2 - pi x R^2 / 4) x length = (100 - 78.54) x 100 = 2,146 mm^3
+- **Expected volume: ~991,416 mm^3** (1,000,000 - 4 x 2,146)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=100, height=100, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=100
+5. `solidworks_fillet` with radius=10, edges=[{x:50, y:50, z:50}, {x:-50, y:50, z:50}, {x:-50, y:-50, z:50}, {x:50, y:-50, z:50}]
+6. `solidworks_get_mass_properties`
+
+---
+
+## Test 36: Chamfer — Beveled Block Edge (Applied Features)
+
+**What it tests:** Applying an equal-distance chamfer to a single edge.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw an 80mm x 60mm rectangle centered at the origin and extrude it 40mm. Then apply an 8mm equal-distance chamfer to the top-front edge — the horizontal edge where y=30 meets z=0, running along X. Select it at coordinate (0, 30, 0). Report the volume.
+```
+
+**Expected outcome:**
+- Block from (-40, -30, 0) to (40, 30, 40)
+- One 80mm-long edge chamfered with 8mm equal distance
+- Triangular prism removed: 0.5 x 8 x 8 x 80 = 2,560 mm^3
+- **Expected volume: 189,440 mm^3** (192,000 - 2,560)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=80, height=60, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=40
+5. `solidworks_chamfer` with distance=8, edges=[{x:0, y:30, z:0}]
+6. `solidworks_get_mass_properties`
+
+---
+
+## Test 37: Shell — Hollow Box (Applied Features)
+
+**What it tests:** Hollowing out a solid by removing a face and creating uniform wall thickness.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a 50mm x 50mm rectangle centered at the origin and extrude it 50mm to create a cube. Then shell it with 5mm wall thickness, removing the back face at (0, 0, 50) to create an open-back hollow box. Report the volume.
+```
+
+**Expected outcome:**
+- 50mm cube from (-25, -25, 0) to (25, 25, 50)
+- Back face at z=50 removed, 5mm walls on all other sides
+- Inner cavity: 40mm x 40mm x 45mm (5mm walls on sides, 5mm on front, open at back)
+- **Expected volume: 53,000 mm^3** (125,000 - 72,000)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=50, height=50, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=50
+5. `solidworks_shell` with thickness=5, facesToRemove=[{x:0, y:0, z:50}]
+6. `solidworks_get_mass_properties`
+
+---
+
+## Test 38: Draft — Tapered Block (Applied Features)
+
+**What it tests:** Applying a draft angle to side faces using a neutral plane, causing the part to taper.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a 40mm x 40mm rectangle centered at the origin and extrude it 50mm. Then apply a 10-degree draft to the left face and right face, using the Front plane as the neutral plane. The left face is at (-20, 0, 25) and the right face is at (20, 0, 25). Report the volume.
+```
+
+**Expected outcome:**
+- Block from (-20, -20, 0) to (20, 20, 50)
+- Draft inward from Front plane (z=0): at z=0 faces stay at x=±20; at z=50 they taper inward by tan(10°) x 50 ≈ 8.82mm each side
+- Cross-section width at z=50: 40 - 2 x 8.82 = 22.37mm; Y-dimension unchanged at 40mm
+- **Expected volume: ~62,365 mm^3** (integral of tapered cross-sections over 50mm depth)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=40, height=40, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=50
+5. `solidworks_draft` with angle=10, neutralPlane="Front", facesToDraft=[{x:-20, y:0, z:25}, {x:20, y:0, z:25}]
+6. `solidworks_get_mass_properties`
+
+---
+
+## Test 39: Linear Pattern — Row of Holes (Patterns)
+
+**What it tests:** Creating a linear pattern of a cut feature along an edge direction, with feature name discovery via list_features.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a 120mm x 60mm rectangle centered at the origin and extrude it 10mm to create a flat plate. Then create a sketch on the front face at (-45, 0, 0) and draw a circle with radius 5mm centered at (-45, 0). Cut-extrude 10mm to make a through-hole. Use list_features to find the cut feature name. Then create a linear pattern of the cut feature with 4 total instances, 30mm spacing, using the bottom-front edge at (0, -30, 0) as the pattern direction. Report the volume.
+```
+
+**Expected outcome:**
+- Plate: 120x60x10mm from (-60, -30, 0) to (60, 30, 10)
+- Through-hole R=5 at (-45, 0)
+- Linear pattern creates 4 equally spaced holes at x = -45, -15, 15, 45 — all within the plate
+- **Expected volume: ~68,858 mm^3** (72,000 - 4 x pi x 25 x 10)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=120, height=60, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=10
+5. `solidworks_create_sketch` with faceX=-45, faceY=0, faceZ=0
+6. `solidworks_sketch_circle` with radius=5, centerX=-45, centerY=0
+7. `solidworks_create_cut_extrusion` with depth=10
+8. `solidworks_list_features`
+9. `solidworks_linear_pattern` with features=["Cut-Extrude1"], direction1={x:0, y:-30, z:0}, spacing1=30, count1=4
+10. `solidworks_get_mass_properties`
+
+---
+
+## Test 40: Circular Pattern — Bolt Circle (Patterns)
+
+**What it tests:** Creating a circular pattern of a cut feature around a reference axis, including reference axis creation from a cylindrical face.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a circle with radius 40mm at the origin and extrude it 10mm to create a disc. Create a reference axis from the outer cylindrical face at (40, 0, 5). Then create a sketch on the front face at (25, 0, 0) and draw a circle with radius 4mm centered at (25, 0). Cut-extrude 10mm to create a through-hole. Use list_features to find the cut feature name. Create a circular pattern of the cut with 6 total instances over 360 degrees around Axis1. Report the volume.
+```
+
+**Expected outcome:**
+- Disc: R=40, 10mm thick from z=0 to z=10
+- Reference axis through the center of the cylindrical face
+- Through-hole R=4 at radial offset of 25mm from center
+- Circular pattern: 6 equally spaced holes at r=25 from center (60° apart)
+- **Expected volume: ~47,250 mm^3** (pi x 40^2 x 10 - 6 x pi x 4^2 x 10)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_circle` with radius=40, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=10
+5. `solidworks_ref_axis` with type="CYLINDRICAL_FACE", face={x:40, y:0, z:5}
+6. `solidworks_create_sketch` with faceX=25, faceY=0, faceZ=0
+7. `solidworks_sketch_circle` with radius=4, centerX=25, centerY=0
+8. `solidworks_create_cut_extrusion` with depth=10
+9. `solidworks_list_features`
+10. `solidworks_circular_pattern` with features=["Cut-Extrude1"], axis="Axis1", count=6, angle=360
+11. `solidworks_get_mass_properties`
+
+---
+
+## Test 41: Mirror — Symmetric Cut (Patterns)
+
+**What it tests:** Mirroring a cut feature across a standard reference plane to create symmetric geometry.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a 100mm x 60mm rectangle centered at the origin and extrude it 30mm. Then create a sketch on the front face at (25, 0, 0) and draw a circle with radius 8mm centered at (25, 0). Cut-extrude 30mm to create a through-hole on the right side. Use list_features to find the cut feature name. Mirror the cut across the Right plane to create a matching hole on the left side at (-25, 0). Report the volume.
+```
+
+**Expected outcome:**
+- Block: 100x60x30mm from (-50, -30, 0) to (50, 30, 30)
+- Through-hole R=8 at (25, 0)
+- Mirror creates a symmetric hole at (-25, 0)
+- **Expected volume: ~167,936 mm^3** (180,000 - 2 x pi x 64 x 30)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=100, height=60, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=30
+5. `solidworks_create_sketch` with faceX=25, faceY=0, faceZ=0
+6. `solidworks_sketch_circle` with radius=8, centerX=25, centerY=0
+7. `solidworks_create_cut_extrusion` with depth=30
+8. `solidworks_list_features`
+9. `solidworks_mirror` with features=["Cut-Extrude1"], mirrorPlane="Right"
+10. `solidworks_get_mass_properties`
+
+---
+
+## Test 42: Reference Plane + List Features (Reference Geometry)
+
+**What it tests:** Creating an offset reference plane and verifying it appears in the feature tree.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a 60mm x 60mm rectangle centered at the origin and extrude it 60mm to create a cube. Then create a reference plane offset 30mm from the Front plane. Use list_features to verify that a reference plane (Plane1 or similar) appears in the feature tree. Report the volume.
+```
+
+**Expected outcome:**
+- 60mm cube from (-30, -30, 0) to (30, 30, 60)
+- Reference plane created 30mm from Front plane
+- Feature tree includes the new plane (e.g., "Plane1")
+- Volume is unchanged by the reference plane
+- **Expected volume: 216,000 mm^3** (60^3)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=60, height=60, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=60
+5. `solidworks_ref_plane` with type="OFFSET", referencePlane="Front", offset=30
+6. `solidworks_list_features`
+7. `solidworks_get_mass_properties`
+
+---
+
+## Test 43: Cut Revolve — Stepped Shaft (Cut Features)
+
+**What it tests:** Using a cut revolve to machine a step in a cylindrical shaft, creating a two-diameter shaft.
+
+**Prompt:**
+
+```
+Create a new part. On the Top plane, draw a circle with radius 30mm at the origin and extrude it 60mm to create a cylinder (its axis runs along Y from y=0 to y=60). Then on the Front plane, draw a vertical centerline from (0, -40) to (0, 60) and a closed rectangular cut profile using 4 lines: (25, 30) to (30, 30), (30, 30) to (30, 60), (30, 60) to (25, 60), (25, 60) to (25, 30). Cut-revolve 360 degrees to create a stepped shaft. The result should be R=30 from y=0 to y=30, and R=25 from y=30 to y=60. Report the volume.
+```
+
+**Expected outcome:**
+- Cylinder R=30, 60mm tall along Y-axis (extruded from Top plane)
+- Cut revolve removes ring R=25..30 from y=30 to y=60
+- Lower section (y=0..30): pi x 30^2 x 30 = 84,823 mm^3
+- Upper section (y=30..60): pi x 25^2 x 30 = 58,905 mm^3
+- **Expected volume: ~143,728 mm^3**
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Top"
+3. `solidworks_sketch_circle` with radius=30, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=60
+5. `solidworks_create_sketch` with plane "Front"
+6. `solidworks_sketch_centerline` with x1=0, y1=-40, x2=0, y2=60
+7. `solidworks_sketch_line` with x1=25, y1=30, x2=30, y2=30
+8. `solidworks_sketch_line` with x1=30, y1=30, x2=30, y2=60
+9. `solidworks_sketch_line` with x1=30, y1=60, x2=25, y2=60
+10. `solidworks_sketch_line` with x1=25, y1=60, x2=25, y2=30
+11. `solidworks_cut_revolve` with angle=360
+12. `solidworks_get_mass_properties`
+
+---
+
+## Test 44: Cosmetic Thread (Hole Features)
+
+**What it tests:** Applying a cosmetic thread annotation to a cylindrical edge. Cosmetic threads are visual only and do not change the solid geometry.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a circle with radius 10mm at the origin and extrude it 30mm to create a cylinder. Apply a cosmetic thread to the front circular edge at (10, 0, 0) with a thread depth of 25mm and minor diameter of 8mm. Report the volume — it should be unchanged since cosmetic threads are annotation-only.
+```
+
+**Expected outcome:**
+- Cylinder R=10, 30mm deep along Z from z=0 to z=30
+- Cosmetic thread applied to the front circular edge (visual annotation only)
+- No material is added or removed
+- **Expected volume: ~9,425 mm^3** (pi x 10^2 x 30)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_circle` with radius=10, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=30
+5. `solidworks_thread` with edge={x:10, y:0, z:0}, depth=25, diameter=8
+6. `solidworks_get_mass_properties`
+
+---
+
+## Test 45: Ref Axis + Ref Point (Reference Geometry)
+
+**What it tests:** Creating a reference axis from a cylindrical face, a reference point at arbitrary 3D coordinates, and verifying both appear in the feature tree.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a circle with radius 20mm at the origin and extrude it 40mm to create a cylinder. Create a reference axis from the cylindrical outer face at (20, 0, 20). Create a reference point at coordinates (30, 30, 30). List all features to verify that Axis1 and Point1 appear in the feature tree. Report the volume.
+```
+
+**Expected outcome:**
+- Cylinder R=20, 40mm deep along Z from z=0 to z=40
+- Reference axis created along the cylinder's center axis
+- Reference point created at (30, 30, 30) in 3D space
+- Feature tree includes Axis1 and Point1 (or similar names)
+- Volume is unchanged by reference geometry
+- **Expected volume: ~50,265 mm^3** (pi x 20^2 x 40)
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_circle` with radius=20, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=40
+5. `solidworks_ref_axis` with type="CYLINDRICAL_FACE", face={x:20, y:0, z:20}
+6. `solidworks_ref_point` with type="COORDINATES", x=30, y=30, z=30
+7. `solidworks_list_features`
+8. `solidworks_get_mass_properties`
+
+---
+
+## Test 46: Comprehensive 3D Feature Workflow (Multi-Feature)
+
+**What it tests:** Combining cut-extrusion, mirror, fillet, and list_features in a single multi-step workflow. This tests the agent's ability to chain advanced 3D operations and discover feature names.
+
+**Prompt:**
+
+```
+Create a new part. On the Front plane, draw a 100mm x 60mm rectangle centered at the origin and extrude it 30mm. Then:
+
+1. Create a through-hole: sketch a circle with radius 8mm at (30, 0) on the front face (z=0) and cut-extrude 30mm.
+2. Use list_features to find the cut feature name.
+3. Mirror the cut across the Right plane to create a symmetric hole at (-30, 0).
+4. Apply a 5mm radius fillet to all 4 vertical depth edges. The edge midpoints are at (50, 30, 15), (-50, 30, 15), (-50, -30, 15), and (50, -30, 15).
+
+Report the final volume.
+```
+
+**Expected outcome:**
+- Block: 100x60x30mm from (-50, -30, 0) to (50, 30, 30)
+- Two symmetric through-holes R=8 at (30, 0) and (-30, 0)
+- 4 vertical depth edges filleted with R=5mm
+- Block volume: 180,000 mm^3
+- 2 holes remove: 2 x pi x 64 x 30 = 12,064 mm^3
+- 4 fillets remove: 4 x (25 - pi x 25/4) x 30 = 4 x 5.365 x 30 = 644 mm^3
+- **Expected volume: ~167,292 mm^3**
+
+**Evaluation criteria:**
+- Does the agent create the block and hole correctly?
+- Does it use list_features to discover the cut feature name before mirroring?
+- Does it mirror across the correct plane (Right)?
+- Does it select the correct edge coordinates for the fillet?
+- Does the reported volume approximately match the expected value?
+
+**Tools that must be called (in order):**
+1. `solidworks_new_part`
+2. `solidworks_create_sketch` with plane "Front"
+3. `solidworks_sketch_rectangle` with width=100, height=60, centerX=0, centerY=0
+4. `solidworks_create_extrusion` with depth=30
+5. `solidworks_create_sketch` with faceX=30, faceY=0, faceZ=0
+6. `solidworks_sketch_circle` with radius=8, centerX=30, centerY=0
+7. `solidworks_create_cut_extrusion` with depth=30
+8. `solidworks_list_features`
+9. `solidworks_mirror` with features=["Cut-Extrude1"], mirrorPlane="Right"
+10. `solidworks_fillet` with radius=5, edges=[{x:50, y:30, z:15}, {x:-50, y:30, z:15}, {x:-50, y:-30, z:15}, {x:50, y:-30, z:15}]
+11. `solidworks_get_mass_properties`
+
+---
+
 ## Scoring Guide
 
 | Score | Meaning |
@@ -927,9 +1389,15 @@ This sketch should contain ALL of the following entity types:
 | **Spatial Positioning** | 6, 7, 8, 20 | spacing, relativeX/Y, centerX/Y, get_last_shape_info |
 | **Constraints & Construction** | 12, 13, 25 | constraint, centerline, toggle_construction |
 | **3D Operations** | 14, 15, 16, 22, 26 | extrusion, cut-extrusion, reverse, mass_properties, face sketching |
+| **Boss/Base Features** | 32, 33, 34 | revolve, sweep, loft (with auxiliary body workaround) |
+| **Cut Features** | 43 | cut_revolve (stepped shaft) |
+| **Applied Features** | 35, 36, 37, 38 | fillet, chamfer, shell, draft |
+| **Patterns** | 39, 40, 41 | linear_pattern, circular_pattern, mirror |
+| **Reference Geometry** | 42, 45 | ref_plane, ref_axis, ref_point, list_features |
+| **Hole Features** | 44 | cosmetic thread (annotation-only) |
 | **Complex / Natural Language** | 24, 29 | Multi-entity profiles, interpreting descriptions |
 | **Error Handling** | 30 | Recovery from tool failures |
-| **Comprehensive 2D** | 31 | Every sketch tool in a single test |
+| **Comprehensive** | 31, 46 | Every sketch tool (31); multi-feature 3D workflow (46) |
 
 ### Volume Verification Summary
 
@@ -951,3 +1419,18 @@ This sketch should contain ALL of the following entity types:
 | 27 | 35mm cube | 42,875 |
 | 29 | Phone stand (approximate) | ~32,000 |
 | 30 | 30x30mm x 50mm (recovery) | 45,000 |
+| 32 | Revolved rectangle (cylinder R=20, H=50) | ~62,832 |
+| 33 | Swept circle R=8 along 80mm path | ~16,085 |
+| 34 | Loft R=30 to R=10 over 80mm (truncated cone) | ~108,909 |
+| 35 | 100mm cube, 4 edges filleted R=10 | ~991,416 |
+| 36 | 80x60x40 block, 1 edge chamfered 8mm | 189,440 |
+| 37 | 50mm cube, shelled 5mm, back face removed | 53,000 |
+| 38 | 40x40x50 block, draft 10° on 2 faces | ~62,365 |
+| 39 | 120x60x10 plate, 4 holes R=5 (linear pattern) | ~68,858 |
+| 40 | Disc R=40x10, 6 holes R=4 (circular pattern) | ~47,250 |
+| 41 | 100x60x30 block, 2 holes R=8 (mirror) | ~167,936 |
+| 42 | 60mm cube + ref plane (unchanged) | 216,000 |
+| 43 | Stepped shaft R=30/R=25, each 30mm | ~143,728 |
+| 44 | Cylinder R=10x30 + cosmetic thread (unchanged) | ~9,425 |
+| 45 | Cylinder R=20x40 + ref axis + ref point (unchanged) | ~50,265 |
+| 46 | 100x60x30 block, 2 holes R=8, 4 fillets R=5 | ~167,292 |
