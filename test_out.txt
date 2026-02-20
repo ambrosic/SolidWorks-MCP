@@ -1,0 +1,210 @@
+
+SolidWorks MCP — Comprehensive Test Suite
+
+
+============================================================
+  SOLIDWORKS MCP — COMPREHENSIVE TEST SUITE
+============================================================
+
+============================================================
+  0. COM INIT & CONNECTION
+============================================================
+  → Initialising COM…
+  ✓ pythoncom.CoInitialize()
+  → Attached to existing SolidWorks instance
+
+  [Connection]
+  ✓ SolidWorks application object obtained
+  ✓ RevisionNumber readable — 33.5.0
+
+============================================================
+  1. TEMPLATE DISCOVERY
+============================================================
+
+  [Template discovery]
+  ✓ Part template found — C:\ProgramData\SOLIDWORKS\SOLIDWORKS 2025\templates\Part.prtdot
+
+============================================================
+  2. PART CREATION & PLANE SELECTION
+============================================================
+
+  [New part creation]
+  ✓ NewDocument returned a document
+
+  [Plane selection (FeatureByName)]
+  ✓ Select Front Plane
+  ✓ Select Top Plane
+  ✓ Select Right Plane
+
+============================================================
+  3. SKETCH LIFECYCLE
+============================================================
+
+  [Sketch lifecycle (create → draw → exit)]
+  ✓ InsertSketch on Front Plane
+  ✓ CreateCornerRectangle 100x100 mm
+  ✓ Exit sketch
+  ✓ Sketch1 discoverable after exit
+
+  [Feature type check for 'Sketch1']
+  ✓ GetTypeName2 == 'ProfileFeature' — got 'ProfileFeature'
+
+  [Feature-tree sketch enumeration (expect Sketch1)]
+  ✓ Latest sketch = 'Sketch1'
+
+  [Sketch selection by name ('Sketch1')]
+  ✓ FeatureByName('Sketch1') found
+
+  [ClearSelection2 before Select2 for 'Sketch1']
+  ✓ Select2 returned True — returned True
+
+============================================================
+  4. EXTRUSION (ADD MATERIAL)
+============================================================
+
+  [Extrusion (sketch='Sketch1', depth=100.0mm)]
+  ✓ FeatureExtrusion2 (add material)
+
+  [Sketch 'Sketch1' still selectable after extrusion]
+  ✓ FeatureByName('Sketch1') post-extrusion
+
+============================================================
+  5. CUT-EXTRUSION (REMOVE MATERIAL)
+============================================================
+
+  [Second sketch on solid (plane='Top Plane', will be Sketch2)]
+  ✓ InsertSketch on existing solid
+  ✓ CreateCircleByRadius 20mm radius
+  ✓ Exit second sketch
+  ✓ Sketch2 exists after exit
+
+  [Feature type check for 'Sketch2']
+  ✓ GetTypeName2 == 'ProfileFeature' — got 'ProfileFeature'
+
+  [Feature-tree sketch enumeration (expect Sketch2)]
+  ✓ Latest sketch = 'Sketch2'
+
+  [Sketch selection by name ('Sketch2')]
+  ✓ FeatureByName('Sketch2') found
+
+  [ClearSelection2 before Select2 for 'Sketch2']
+  ✓ Select2 returned True — returned True
+
+  [Cut-extrusion (sketch='Sketch2', depth=50.0mm, reverse=False)]
+  ✓ Selection count after Select2 (expect 1) — count=1
+  ✓ Selected object type after Select2 — type=9
+  ✓ Selection count after InsertSketch (enter) — count=1
+  ✗ Selection count after InsertSketch (exit) — count=0
+  ✗ FeatureExtrusion2 (cut material)
+
+  Cut-extrusion failed.
+
+============================================================
+  6. CUT-EXTRUSION — REVERSED DIRECTION
+============================================================
+
+  [Cut-extrusion reversed (sketch will be Sketch3)]
+  ✗ Cut-extrusion reversed 30.0mm — FeatureExtrusion2 returned None for cut-extrusion
+
+============================================================
+  7. MULTIPLE SEQUENTIAL CUT-EXTRUSIONS
+============================================================
+
+  [Multiple sequential cut-extrusions]
+  ✗ Cut #1 using Sketch4 — FeatureExtrusion2 returned None for cut-extrusion
+  ✗ Cut #2 using Sketch5 — FeatureExtrusion2 returned None for cut-extrusion
+
+============================================================
+  8. UNIT CONVERSION VALIDATION
+============================================================
+
+  [Unit conversion: 50x30mm rectangle (0.05 x 0.03 m)]
+  ✓ 50x30mm rectangle sketch created
+
+  [Unit conversion: circle radius=10mm (0.01 m)]
+  ✓ 10mm-radius circle sketch created
+
+============================================================
+  9. FEATURE-TREE ENUMERATION ROBUSTNESS
+============================================================
+
+  [Enumerate all ProfileFeature entries]
+  ✓ Found 7 sketch(es) in feature tree — Sketch1, Sketch2, Sketch3, Sketch4, Sketch5, Sketch6, Sketch7
+  ✓ FeatureByName('Sketch1') round-trip
+  ✓ FeatureByName('Sketch2') round-trip
+  ✓ FeatureByName('Sketch3') round-trip
+  ✓ FeatureByName('Sketch4') round-trip
+  ✓ FeatureByName('Sketch5') round-trip
+  ✓ FeatureByName('Sketch6') round-trip
+  ✓ FeatureByName('Sketch7') round-trip
+
+============================================================
+  10. VIEW / ZOOM
+============================================================
+  ✓ ViewZoomtofit2()
+
+============================================================
+  RESULTS
+============================================================
+
+  PASSED (40):
+    ✓ pythoncom.CoInitialize()
+    ✓ SolidWorks application object obtained
+    ✓ RevisionNumber readable — 33.5.0
+    ✓ Part template found — C:\ProgramData\SOLIDWORKS\SOLIDWORKS 2025\templates\Part.prtdot
+    ✓ NewDocument returned a document
+    ✓ Select Front Plane
+    ✓ Select Top Plane
+    ✓ Select Right Plane
+    ✓ InsertSketch on Front Plane
+    ✓ CreateCornerRectangle 100x100 mm
+    ✓ Exit sketch
+    ✓ Sketch1 discoverable after exit
+    ✓ GetTypeName2 == 'ProfileFeature' — got 'ProfileFeature'
+    ✓ Latest sketch = 'Sketch1'
+    ✓ FeatureByName('Sketch1') found
+    ✓ Select2 returned True — returned True
+    ✓ FeatureExtrusion2 (add material)
+    ✓ FeatureByName('Sketch1') post-extrusion
+    ✓ InsertSketch on existing solid
+    ✓ CreateCircleByRadius 20mm radius
+    ✓ Exit second sketch
+    ✓ Sketch2 exists after exit
+    ✓ GetTypeName2 == 'ProfileFeature' — got 'ProfileFeature'
+    ✓ Latest sketch = 'Sketch2'
+    ✓ FeatureByName('Sketch2') found
+    ✓ Select2 returned True — returned True
+    ✓ Selection count after Select2 (expect 1) — count=1
+    ✓ Selected object type after Select2 — type=9
+    ✓ Selection count after InsertSketch (enter) — count=1
+    ✓ 50x30mm rectangle sketch created
+    ✓ 10mm-radius circle sketch created
+    ✓ Found 7 sketch(es) in feature tree — Sketch1, Sketch2, Sketch3, Sketch4, Sketch5, Sketch6, Sketch7
+    ✓ FeatureByName('Sketch1') round-trip
+    ✓ FeatureByName('Sketch2') round-trip
+    ✓ FeatureByName('Sketch3') round-trip
+    ✓ FeatureByName('Sketch4') round-trip
+    ✓ FeatureByName('Sketch5') round-trip
+    ✓ FeatureByName('Sketch6') round-trip
+    ✓ FeatureByName('Sketch7') round-trip
+    ✓ ViewZoomtofit2()
+
+  FAILED (5):
+    ✗ Selection count after InsertSketch (exit) — count=0
+    ✗ FeatureExtrusion2 (cut material)
+    ✗ Cut-extrusion reversed 30.0mm — FeatureExtrusion2 returned None for cut-extrusion
+    ✗ Cut #1 using Sketch4 — FeatureExtrusion2 returned None for cut-extrusion
+    ✗ Cut #2 using Sketch5 — FeatureExtrusion2 returned None for cut-extrusion
+
+  Total  : 45
+  Passed : 40
+  Failed : 5
+
+  ✗ 5 TEST(S) FAILED
+
+
+Press Enter to exit…Traceback (most recent call last):
+  File "C:\Users\clusterMan\Documents\GitHub\SolidWorks-MCP\test.py", line 704, in <module>
+    input("\nPress Enter to exit�")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+EOFError: EOF when reading a line

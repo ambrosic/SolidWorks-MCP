@@ -45,9 +45,44 @@ class ModelingTools:
                     },
                     "required": ["depth"]
                 }
+            ),
+            Tool(
+                name="solidworks_create_cut_extrusion",
+                description="Cut-extrude the current sketch to remove material from an existing 3D body",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "depth": {
+                            "type": "number",
+                            "description": "Cut depth (mm)"
+                        },
+                        "reverse": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Reverse cut direction"
+                        }
+                    },
+                    "required": ["depth"]
+                }
             )
         ]
     
+    def _get_latest_sketch_name(self, doc) -> str:
+        """Walk the feature tree in reverse to find the most recent sketch feature"""
+        try:
+            feature_count = doc.FeatureManager.GetFeatureCount(True)
+            features = doc.FeatureManager.GetFeatures(True)
+            if features:
+                for feature in reversed(features):
+                    if feature.GetTypeName2 == "ProfileFeature":
+                        name = feature.Name
+                        logger.info(f"Latest sketch found in feature tree: {name}")
+                        return name
+        except Exception as e:
+            logger.warning(f"Could not enumerate features to find latest sketch: {e}")
+        logger.warning("No sketch found in feature tree, falling back to Sketch1")
+        return "Sketch1"
+
     def execute(self, tool_name: str, args: dict, sketching_tools=None) -> str:
         """Execute a modeling tool"""
         self.connection.ensure_connection()
@@ -56,6 +91,8 @@ class ModelingTools:
             return self.new_part(sketching_tools)
         elif tool_name == "solidworks_create_extrusion":
             return self.create_extrusion(args, sketching_tools)
+        elif tool_name == "solidworks_create_cut_extrusion":
+            return self.create_cut_extrusion(args, sketching_tools)
         else:
             raise Exception(f"Unknown modeling tool: {tool_name}")
     
@@ -85,21 +122,20 @@ class ModelingTools:
         if sketching_tools and sketching_tools.current_sketch_name:
             sketch_name = sketching_tools.current_sketch_name
         else:
-            # Fallback to guessing
-            sketch_name = "Sketch1"
-        
+            sketch_name = self._get_latest_sketch_name(doc)
+
         # Select the sketch
         sketch_feature = doc.FeatureByName(sketch_name)
         if not sketch_feature:
             raise Exception(f"Could not find sketch: {sketch_name}")
-        
+
         doc.ClearSelection2(True)
         sketch_feature.Select2(False, 0)
-        
+
         # Convert mm to meters
         depth = args["depth"] / 1000.0
         reverse = args.get("reverse", False)
-        
+
         # Create extrusion with all 23 required parameters
         feature = doc.FeatureManager.FeatureExtrusion2(
             True,      # Sd (same direction)
@@ -134,3 +170,70 @@ class ModelingTools:
         
         logger.info(f"Extrusion created: {args['depth']}mm")
         return f"✓ Extrusion {args['depth']}mm created"
+
+    def create_cut_extrusion(self, args: dict, sketching_tools) -> str:
+        """Create cut-extrusion (removes material) from current sketch"""
+        doc = self.connection.get_active_doc()
+        if not doc:
+            raise Exception("No active document")
+
+        # Get current sketch name from sketching tools
+        if sketching_tools and sketching_tools.current_sketch_name:
+            sketch_name = sketching_tools.current_sketch_name
+        else:
+            sketch_name = self._get_latest_sketch_name(doc)
+
+        sketch_feature = doc.FeatureByName(sketch_name)
+        if not sketch_feature:
+            raise Exception(f"Could not find sketch: {sketch_name}")
+
+        doc.ClearSelection2(True)
+        sketch_feature.Select2(False, 0)
+
+        # Convert mm to meters
+        depth = args["depth"] / 1000.0
+        reverse = args.get("reverse", False)
+
+        # FeatureCut4 parameter names from sldworks.tlb (SW 2025 v33, 27 params):
+        # Sd, Flip, Dir, T1, T2, D1, D2, Dchk1, Dchk2, Ddir1, Ddir2, Dang1, Dang2,
+        # OffsetReverse1, OffsetReverse2, TranslateSurface1, TranslateSurface2,
+        # NormalCut, UseFeatScope, UseAutoSelect,
+        # AssemblyFeatureScope, AutoSelectComponents, PropagateFeatureToParts,
+        # T0, StartOffset, FlipStartOffset, OptimizeGeometry
+        feature = doc.FeatureManager.FeatureCut4(
+            True,      # Sd
+            reverse,   # Flip
+            False,     # Dir
+            0,         # T1 (Blind)
+            0,         # T2
+            depth,     # D1
+            0.0,       # D2
+            False,     # Dchk1
+            False,     # Dchk2
+            False,     # Ddir1
+            False,     # Ddir2
+            0.0,       # Dang1
+            0.0,       # Dang2
+            False,     # OffsetReverse1
+            False,     # OffsetReverse2
+            False,     # TranslateSurface1
+            False,     # TranslateSurface2
+            False,     # NormalCut
+            False,     # UseFeatScope
+            True,      # UseAutoSelect
+            False,     # AssemblyFeatureScope
+            True,      # AutoSelectComponents
+            False,     # PropagateFeatureToParts
+            0,         # T0
+            0.0,       # StartOffset
+            False,     # FlipStartOffset
+            False      # OptimizeGeometry
+        )
+
+        if not feature:
+            raise Exception("Failed to create cut-extrusion")
+
+        doc.ViewZoomtofit2()
+
+        logger.info(f"Cut-extrusion created: {args['depth']}mm")
+        return f"✓ Cut-extrusion {args['depth']}mm created"
