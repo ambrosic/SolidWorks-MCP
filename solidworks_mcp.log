@@ -1,0 +1,76 @@
+2026-02-19 19:59:52,360 - __main__ - INFO - Starting SolidWorks MCP Server (Modular Edition)...
+2026-02-19 19:59:52,476 - mcp.server.lowlevel.server - INFO - Processing request of type ListToolsRequest
+2026-02-19 20:02:03,615 - __main__ - INFO - Starting SolidWorks MCP Server (Modular Edition)...
+2026-02-19 20:02:03,648 - mcp.server.lowlevel.server - INFO - Processing request of type ListToolsRequest
+2026-02-19 20:02:44,861 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:02:44,863 - __main__ - INFO - Tool called: solidworks_new_part with arguments: {}
+2026-02-19 20:03:32,122 - solidworks.connection - INFO - Launched new SolidWorks instance
+2026-02-19 20:03:32,124 - solidworks.connection - INFO - SolidWorks version: 33.5.0
+2026-02-19 20:03:32,127 - solidworks.connection - INFO - Found template: C:\ProgramData\SOLIDWORKS\SOLIDWORKS 2026\templates\Part.prtdot
+2026-02-19 20:03:32,127 - solidworks.connection - INFO - Creating new part document
+2026-02-19 20:08:26,115 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:08:26,117 - __main__ - INFO - Tool called: solidworks_create_sketch with arguments: {'plane': 'Front'}
+2026-02-19 20:08:32,087 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:08:32,088 - __main__ - INFO - Tool called: solidworks_new_part with arguments: {}
+2026-02-19 20:08:32,088 - solidworks.connection - INFO - Creating new part document
+2026-02-19 20:09:35,048 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:09:35,049 - __main__ - INFO - Tool called: solidworks_new_part with arguments: {}
+2026-02-19 20:09:35,049 - solidworks.connection - INFO - Creating new part document
+2026-02-19 20:16:44,534 - __main__ - INFO - Starting SolidWorks MCP Server (Modular Edition)...
+2026-02-19 20:16:44,698 - mcp.server.lowlevel.server - INFO - Processing request of type ListToolsRequest
+2026-02-19 20:17:09,943 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:17:09,944 - __main__ - INFO - Tool called: solidworks_create_sketch with arguments: {'plane': 'Top'}
+2026-02-19 20:17:09,968 - solidworks.connection - INFO - Connected to existing SolidWorks instance
+2026-02-19 20:17:09,979 - solidworks.connection - INFO - SolidWorks version: 33.5.0
+2026-02-19 20:17:10,015 - solidworks.sketching - INFO - Using existing document
+2026-02-19 20:17:10,816 - solidworks.sketching - INFO - Sketch created: Sketch1 on Top
+2026-02-19 20:17:14,960 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:17:14,965 - __main__ - INFO - Tool called: solidworks_sketch_rectangle with arguments: {'centerX': 0, 'centerY': 0, 'width': 100, 'height': 100}
+2026-02-19 20:17:15,968 - solidworks.sketching - INFO - Rectangle: 100mm x 100mm at (0.0, 0.0)
+2026-02-19 20:17:20,142 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:17:20,143 - __main__ - INFO - Tool called: solidworks_exit_sketch with arguments: {}
+2026-02-19 20:17:20,881 - solidworks.sketching - INFO - Exited sketch
+2026-02-19 20:21:32,473 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:21:32,474 - __main__ - INFO - Tool called: solidworks_new_part with arguments: {}
+2026-02-19 20:21:32,475 - solidworks.connection - INFO - Found template: C:\ProgramData\SOLIDWORKS\SOLIDWORKS 2025\templates\Part.prtdot
+2026-02-19 20:21:32,475 - solidworks.connection - INFO - Creating new part document
+2026-02-19 20:21:34,645 - solidworks.modeling - INFO - New part document created
+2026-02-19 20:21:36,039 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:21:36,040 - __main__ - INFO - Tool called: solidworks_create_sketch with arguments: {'plane': 'Top'}
+2026-02-19 20:21:36,071 - solidworks.sketching - INFO - Using existing document
+2026-02-19 20:21:36,822 - solidworks.sketching - INFO - Sketch created: Sketch1 on Top
+2026-02-19 20:21:38,603 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:21:38,608 - __main__ - INFO - Tool called: solidworks_sketch_rectangle with arguments: {'centerX': 0, 'centerY': 0, 'width': 100, 'height': 125}
+2026-02-19 20:21:39,427 - solidworks.sketching - INFO - Rectangle: 100mm x 125mm at (0.0, 0.0)
+2026-02-19 20:21:53,225 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:21:53,226 - __main__ - INFO - Tool called: solidworks_exit_sketch with arguments: {}
+2026-02-19 20:21:53,668 - solidworks.sketching - INFO - Exited sketch
+2026-02-19 20:21:57,964 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:21:57,966 - __main__ - INFO - Tool called: solidworks_create_extrusion with arguments: {'depth': 20}
+2026-02-19 20:21:58,880 - solidworks.modeling - INFO - Extrusion created: 20mm
+2026-02-19 20:26:12,443 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:26:12,445 - __main__ - INFO - Tool called: solidworks_create_sketch with arguments: {'plane': 'Top'}
+2026-02-19 20:26:12,476 - solidworks.sketching - INFO - Using existing document
+2026-02-19 20:26:13,189 - solidworks.sketching - INFO - Sketch created: Sketch2 on Top
+2026-02-19 20:26:17,679 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:26:17,682 - __main__ - INFO - Tool called: solidworks_sketch_circle with arguments: {'centerX': 0, 'centerY': 37.5, 'radius': 2.5}
+2026-02-19 20:26:17,996 - solidworks.sketching - INFO - Circle: radius 2.5mm at (0.0, 37.5)
+2026-02-19 20:26:19,320 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:26:19,320 - __main__ - INFO - Tool called: solidworks_exit_sketch with arguments: {}
+2026-02-19 20:26:19,730 - solidworks.sketching - INFO - Exited sketch
+2026-02-19 20:26:21,622 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:26:21,624 - __main__ - INFO - Tool called: solidworks_create_extrusion with arguments: {'depth': 6, 'reverse': True}
+2026-02-19 20:26:22,529 - solidworks.modeling - INFO - Extrusion created: 6mm
+2026-02-19 20:28:13,719 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:28:13,721 - __main__ - INFO - Tool called: solidworks_create_sketch with arguments: {'plane': 'Top'}
+2026-02-19 20:28:13,755 - solidworks.sketching - INFO - Using existing document
+2026-02-19 20:28:14,574 - solidworks.sketching - INFO - Sketch created: Sketch3 on Top
+2026-02-19 20:28:16,353 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:28:16,356 - __main__ - INFO - Tool called: solidworks_sketch_circle with arguments: {'centerX': 0, 'centerY': 37.5, 'radius': 2.5}
+2026-02-19 20:28:16,653 - solidworks.sketching - INFO - Circle: radius 2.5mm at (0.0, 37.5)
+2026-02-19 20:28:18,162 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:28:18,163 - __main__ - INFO - Tool called: solidworks_exit_sketch with arguments: {}
+2026-02-19 20:28:18,542 - solidworks.sketching - INFO - Exited sketch
+2026-02-19 20:28:20,034 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-02-19 20:28:20,036 - __main__ - INFO - Tool called: solidworks_create_extrusion with arguments: {'depth': 6, 'reverse': True}
+2026-02-19 20:28:20,869 - solidworks.modeling - INFO - Extrusion created: 6mm
