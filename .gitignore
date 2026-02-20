@@ -2,3 +2,4 @@ __pycache__/*
 .claude/*
 .venv/*
 solidworks/__pycache__/*
+solidworks_mcp.log
