@@ -78,7 +78,8 @@ class SolidWorksMCPServer:
         
         # Sketching tools
         if name in ["solidworks_create_sketch", "solidworks_sketch_rectangle",
-                   "solidworks_sketch_circle", "solidworks_exit_sketch"]:
+                   "solidworks_sketch_circle", "solidworks_exit_sketch",
+                   "solidworks_get_last_shape_info"]:
             return self.sketching.execute(name, arguments)
         
         # Modeling tools
