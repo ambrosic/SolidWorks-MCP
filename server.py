@@ -76,20 +76,39 @@ class SolidWorksMCPServer:
                 logger.error(error_msg, exc_info=True)
                 return [TextContent(type="text", text=error_msg)]
     
+    SKETCHING_TOOLS = [
+        "solidworks_create_sketch",
+        "solidworks_sketch_rectangle",
+        "solidworks_sketch_circle",
+        "solidworks_sketch_line",
+        "solidworks_sketch_centerline",
+        "solidworks_sketch_arc",
+        "solidworks_sketch_spline",
+        "solidworks_sketch_ellipse",
+        "solidworks_sketch_polygon",
+        "solidworks_sketch_slot",
+        "solidworks_sketch_point",
+        "solidworks_sketch_text",
+        "solidworks_sketch_constraint",
+        "solidworks_sketch_toggle_construction",
+        "solidworks_exit_sketch",
+        "solidworks_get_last_shape_info",
+    ]
+
+    MODELING_TOOLS = [
+        "solidworks_new_part",
+        "solidworks_create_extrusion",
+        "solidworks_create_cut_extrusion",
+        "solidworks_get_mass_properties",
+    ]
+
     def _route_tool(self, name: str, arguments: Any) -> str:
         """Route tool calls to appropriate module"""
-        
-        # Sketching tools
-        if name in ["solidworks_create_sketch", "solidworks_sketch_rectangle",
-                   "solidworks_sketch_circle", "solidworks_exit_sketch",
-                   "solidworks_get_last_shape_info"]:
+
+        if name in self.SKETCHING_TOOLS:
             return self.sketching.execute(name, arguments)
-        
-        # Modeling tools
-        elif name in ["solidworks_new_part", "solidworks_create_extrusion",
-                      "solidworks_create_cut_extrusion"]:
+        elif name in self.MODELING_TOOLS:
             return self.modeling.execute(name, arguments, self.sketching)
-        
         else:
             raise Exception(f"Unknown tool: {name}")
 

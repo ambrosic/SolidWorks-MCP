@@ -64,6 +64,14 @@ class ModelingTools:
                     },
                     "required": ["depth"]
                 }
+            ),
+            Tool(
+                name="solidworks_get_mass_properties",
+                description="Evaluate and return mass properties of the active part: mass, volume, surface area, center of mass, and moments of inertia. The part must have material assigned for accurate mass; volume and surface area are always available.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {}
+                }
             )
         ]
     
@@ -93,6 +101,8 @@ class ModelingTools:
             return self.create_extrusion(args, sketching_tools)
         elif tool_name == "solidworks_create_cut_extrusion":
             return self.create_cut_extrusion(args, sketching_tools)
+        elif tool_name == "solidworks_get_mass_properties":
+            return self.get_mass_properties()
         else:
             raise Exception(f"Unknown modeling tool: {tool_name}")
     
@@ -237,3 +247,51 @@ class ModelingTools:
 
         logger.info(f"Cut-extrusion created: {args['depth']}mm")
         return f"✓ Cut-extrusion {args['depth']}mm created"
+
+    def get_mass_properties(self) -> str:
+        """Evaluate mass properties of the active part"""
+        doc = self.connection.get_active_doc()
+        if not doc:
+            raise Exception("No active document")
+
+        # Rebuild to ensure geometry is up to date
+        doc.ForceRebuild3(True)
+
+        # GetMassProperties is a property (not method) returning a 12-element tuple:
+        #   [0-2] Center of mass (x, y, z) in meters
+        #   [3]   Volume in m^3
+        #   [4]   Surface area in m^2
+        #   [5]   Mass in kg
+        #   [6-8] Principal moments of inertia (Ixx, Iyy, Izz) in kg*m^2
+        #   [9-11] Products of inertia (Ixy, Ixz, Iyz) in kg*m^2
+        props = doc.GetMassProperties
+        if not props or len(props) < 12:
+            raise Exception("Failed to get mass properties (no solid body or no material assigned)")
+
+        # Convert from SI to mm-based units
+        com_x = props[0] * 1000.0
+        com_y = props[1] * 1000.0
+        com_z = props[2] * 1000.0
+        volume_mm3 = props[3] * 1e9        # m^3 -> mm^3
+        surface_area_mm2 = props[4] * 1e6  # m^2 -> mm^2
+        mass_kg = props[5]
+
+        # Moments of inertia: kg*m^2 -> kg*mm^2
+        ixx = props[6] * 1e6
+        iyy = props[7] * 1e6
+        izz = props[8] * 1e6
+        ixy = props[9] * 1e6
+        ixz = props[10] * 1e6
+        iyz = props[11] * 1e6
+
+        result = "Mass Properties:\n"
+        result += f"  Mass: {mass_kg:.6f} kg\n"
+        result += f"  Volume: {volume_mm3:.2f} mm^3\n"
+        result += f"  Surface Area: {surface_area_mm2:.2f} mm^2\n"
+        result += f"  Center of Mass: ({com_x:.2f}, {com_y:.2f}, {com_z:.2f}) mm\n"
+        result += f"  Moments of Inertia (kg*mm^2):\n"
+        result += f"    Ixx={ixx:.4f}  Iyy={iyy:.4f}  Izz={izz:.4f}\n"
+        result += f"    Ixy={ixy:.4f}  Ixz={ixz:.4f}  Iyz={iyz:.4f}"
+
+        logger.info(f"Mass properties: mass={mass_kg:.6f}kg, volume={volume_mm3:.2f}mm^3")
+        return result
