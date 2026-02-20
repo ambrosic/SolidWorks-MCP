@@ -72,6 +72,14 @@ class ModelingTools:
                     "type": "object",
                     "properties": {}
                 }
+            ),
+            Tool(
+                name="solidworks_list_features",
+                description="List all features in the feature tree of the active part. Returns feature names and types. Useful for discovering feature names needed by pattern, mirror, and other operations.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {}
+                }
             )
         ]
     
@@ -103,6 +111,8 @@ class ModelingTools:
             return self.create_cut_extrusion(args, sketching_tools)
         elif tool_name == "solidworks_get_mass_properties":
             return self.get_mass_properties()
+        elif tool_name == "solidworks_list_features":
+            return self.list_features()
         else:
             raise Exception(f"Unknown modeling tool: {tool_name}")
     
@@ -294,4 +304,26 @@ class ModelingTools:
         result += f"    Ixy={ixy:.4f}  Ixz={ixz:.4f}  Iyz={iyz:.4f}"
 
         logger.info(f"Mass properties: mass={mass_kg:.6f}kg, volume={volume_mm3:.2f}mm^3")
+        return result
+
+    def list_features(self) -> str:
+        """List all features in the feature tree"""
+        doc = self.connection.get_active_doc()
+        if not doc:
+            raise Exception("No active document")
+
+        features = doc.FeatureManager.GetFeatures(True)
+        if not features:
+            return "No features found in the feature tree."
+
+        result = "Feature Tree:\n"
+        for feature in features:
+            name = feature.Name
+            type_name = feature.GetTypeName2
+            # Skip origin-level items for cleaner output
+            if type_name in ("OriginProfileFeature", "MaterialFolder", "SensorFolder"):
+                continue
+            result += f"  {name} ({type_name})\n"
+
+        logger.info(f"Listed {len(features)} features")
         return result

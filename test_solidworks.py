@@ -804,11 +804,302 @@ def test_all_new_tools():
         return False
 
 
+def make_cube(sw, template, size_mm=100):
+    """Helper: create a part with a cube of given size. Returns (model, size_m)."""
+    size_m = size_mm / 1000.0
+    model = sw.NewDocument(template, 0, 0, 0)
+    front_plane = model.FeatureByName("Front Plane")
+    model.ClearSelection2(True)
+    front_plane.Select2(False, 0)
+    model.SketchManager.InsertSketch(True)
+    model.SketchManager.CreateCornerRectangle(0.0, 0.0, 0.0, size_m, size_m, 0.0)
+    exit_sketch(model)
+    sketch1 = model.FeatureByName("Sketch1")
+    model.ClearSelection2(True)
+    sketch1.Select2(False, 0)
+    feat = model.FeatureManager.FeatureExtrusion2(
+        True, False, False, 0, 0, size_m, 0.0,
+        False, False, False, False, 0.0, 0.0,
+        False, False, False, False, True, True, True,
+        0, 0, False
+    )
+    if not feat:
+        raise Exception("Failed to create base cube for test")
+    return model
+
+
+def test_fillet(sw, template):
+    """Test: create a cube and fillet one edge."""
+    try:
+        log("\n--- Test: fillet ---")
+        model = make_cube(sw, template, 100)
+
+        # Select a vertical edge of the cube (front-right edge at x=100, z=0)
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "", "EDGE",
+            0.1, 0.05, 0.0,  # midpoint of the front-right edge
+            False, 1, callout, 0
+        )
+        if not ok:
+            log("Could not select edge for fillet", "ERROR")
+            return False
+
+        feature = model.FeatureManager.FeatureFillet3(
+            1,      # Options: simple constant radius
+            0.005,  # 5mm radius in meters
+            0.0, 0.0, 0, 0, 0, 0,
+        )
+        if not feature:
+            log("FeatureFillet3 returned None", "ERROR")
+            return False
+
+        log("Fillet created (5mm radius)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"fillet FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+def test_chamfer(sw, template):
+    """Test: create a cube and chamfer one edge."""
+    try:
+        log("\n--- Test: chamfer ---")
+        model = make_cube(sw, template, 100)
+
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "", "EDGE",
+            0.1, 0.05, 0.0,
+            False, 0, callout, 0
+        )
+        if not ok:
+            log("Could not select edge for chamfer", "ERROR")
+            return False
+
+        feature = model.FeatureManager.InsertFeatureChamfer(
+            4,          # Options: 4 = select edges
+            0,          # Type: 0 = equal distance
+            0.005,      # 5mm in meters
+            0.785398,   # 45 degrees in radians
+            0.005,      # other dist
+        )
+        if not feature:
+            log("InsertFeatureChamfer returned None", "ERROR")
+            return False
+
+        log("Chamfer created (5mm)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"chamfer FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+def test_shell(sw, template):
+    """Test: create a cube and shell it (remove top face)."""
+    try:
+        log("\n--- Test: shell ---")
+        model = make_cube(sw, template, 100)
+
+        # Select top face (y=100mm, center of face)
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "", "FACE",
+            0.05, 0.1, 0.05,  # center of top face
+            False, 0, callout, 0
+        )
+        if not ok:
+            log("Could not select top face for shell", "ERROR")
+            return False
+
+        feature = model.FeatureManager.InsertFeatureShell(
+            0.003,  # 3mm thickness in meters
+            False   # Not outward
+        )
+        if not feature:
+            log("InsertFeatureShell returned None", "ERROR")
+            return False
+
+        log("Shell created (3mm thickness, top face removed)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"shell FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+def test_revolve(sw, template):
+    """Test: create a half-profile with centerline and revolve 360°."""
+    try:
+        log("\n--- Test: revolve ---")
+        model = new_sketch_on_front(sw, template)
+
+        import math
+
+        # Draw a centerline (vertical at x=0)
+        model.SketchManager.CreateCenterLine(0.0, -0.03, 0.0, 0.0, 0.03, 0.0)
+
+        # Draw a half-profile (right side of centerline)
+        model.SketchManager.CreateLine(0.01, -0.02, 0.0, 0.02, -0.02, 0.0)
+        model.SketchManager.CreateLine(0.02, -0.02, 0.0, 0.02, 0.02, 0.0)
+        model.SketchManager.CreateLine(0.02, 0.02, 0.0, 0.01, 0.02, 0.0)
+        model.SketchManager.CreateLine(0.01, 0.02, 0.0, 0.01, -0.02, 0.0)
+        log("Half-profile and centerline drawn", "SUCCESS")
+
+        exit_sketch(model)
+
+        sketch1 = model.FeatureByName("Sketch1")
+        model.ClearSelection2(True)
+        sketch1.Select2(False, 0)
+
+        feature = model.FeatureManager.FeatureRevolve2(
+            True, True, False, False, False, False,
+            0, 0,
+            2 * math.pi,  # 360 degrees
+            0.0,
+            False, False, 0.0, 0.0,
+            0, 0.0, 0.0,
+            True, True, True,
+        )
+        if not feature:
+            log("FeatureRevolve2 returned None", "ERROR")
+            return False
+
+        log("Revolve created (360°)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"revolve FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+def test_ref_plane(sw, template):
+    """Test: create an offset reference plane."""
+    try:
+        log("\n--- Test: ref_plane ---")
+        model = make_cube(sw, template, 100)
+
+        # Select Front Plane
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "Front Plane", "DATUMPLANE",
+            0, 0, 0,
+            False, 0, callout, 0
+        )
+        if not ok:
+            log("Could not select Front Plane", "ERROR")
+            return False
+
+        # Create offset plane 50mm from Front
+        feature = model.FeatureManager.InsertRefPlane(
+            3 | 256,    # Distance + first reference
+            0.05,       # 50mm in meters
+            0, 0, 0, 0
+        )
+        if not feature:
+            log("InsertRefPlane returned None", "ERROR")
+            return False
+
+        log("Reference plane created (50mm offset from Front)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"ref_plane FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+def test_list_features(sw, template):
+    """Test: create a cube and list features."""
+    try:
+        log("\n--- Test: list_features ---")
+        model = make_cube(sw, template, 100)
+
+        features = model.FeatureManager.GetFeatures(True)
+        if not features:
+            log("GetFeatures returned None", "ERROR")
+            return False
+
+        found_extrude = False
+        for feature in features:
+            name = feature.Name
+            type_name = feature.GetTypeName2
+            if "Extrusion" in type_name or "Extrude" in name:
+                found_extrude = True
+
+        if not found_extrude:
+            log("Could not find extrusion feature in tree", "ERROR")
+            return False
+
+        log(f"Feature tree has {len(features)} features, extrusion found", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"list_features FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+def test_all_feature_tools():
+    """Run all feature tool tests."""
+    try:
+        log("="*60)
+        log("Feature Tools Test Suite")
+        log("="*60)
+
+        pythoncom.CoInitialize()
+        sw = win32com.client.Dispatch("SldWorks.Application")
+        sw.Visible = True
+        log(f"Connected to SolidWorks {sw.RevisionNumber}", "SUCCESS")
+
+        template = find_template()
+        if not template:
+            log("No template found", "ERROR")
+            return False
+
+        results = []
+        results.append(("fillet", test_fillet(sw, template)))
+        results.append(("chamfer", test_chamfer(sw, template)))
+        results.append(("shell", test_shell(sw, template)))
+        results.append(("revolve", test_revolve(sw, template)))
+        results.append(("ref_plane", test_ref_plane(sw, template)))
+        results.append(("list_features", test_list_features(sw, template)))
+
+        log("\n" + "="*60)
+        log("RESULTS:")
+        passed = 0
+        for name, ok in results:
+            status = "PASS" if ok else "FAIL"
+            log(f"  {name}: {status}", "SUCCESS" if ok else "ERROR")
+            if ok:
+                passed += 1
+
+        log(f"\n{passed}/{len(results)} tests passed")
+        log("="*60)
+        return passed == len(results)
+
+    except Exception as e:
+        log(f"Test suite error: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
 if __name__ == "__main__":
     print("\nStarting test...\n")
 
     if len(sys.argv) > 1 and sys.argv[1] == "--new":
         success = test_all_new_tools()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--features":
+        success = test_all_feature_tools()
     else:
         success = test_solidworks()
 
