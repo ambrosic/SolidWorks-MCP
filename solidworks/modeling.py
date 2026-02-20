@@ -67,6 +67,22 @@ class ModelingTools:
             )
         ]
     
+    def _get_latest_sketch_name(self, doc) -> str:
+        """Walk the feature tree in reverse to find the most recent sketch feature"""
+        try:
+            feature_count = doc.FeatureManager.GetFeatureCount(True)
+            features = doc.FeatureManager.GetFeatures(True)
+            if features:
+                for feature in reversed(features):
+                    if feature.GetTypeName2() == "ProfileFeature":
+                        name = feature.Name
+                        logger.info(f"Latest sketch found in feature tree: {name}")
+                        return name
+        except Exception as e:
+            logger.warning(f"Could not enumerate features to find latest sketch: {e}")
+        logger.warning("No sketch found in feature tree, falling back to Sketch1")
+        return "Sketch1"
+
     def execute(self, tool_name: str, args: dict, sketching_tools=None) -> str:
         """Execute a modeling tool"""
         self.connection.ensure_connection()
@@ -106,21 +122,20 @@ class ModelingTools:
         if sketching_tools and sketching_tools.current_sketch_name:
             sketch_name = sketching_tools.current_sketch_name
         else:
-            # Fallback to guessing
-            sketch_name = "Sketch1"
-        
+            sketch_name = self._get_latest_sketch_name(doc)
+
         # Select the sketch
         sketch_feature = doc.FeatureByName(sketch_name)
         if not sketch_feature:
             raise Exception(f"Could not find sketch: {sketch_name}")
-        
+
         doc.ClearSelection2(True)
         sketch_feature.Select2(False, 0)
-        
+
         # Convert mm to meters
         depth = args["depth"] / 1000.0
         reverse = args.get("reverse", False)
-        
+
         # Create extrusion with all 23 required parameters
         feature = doc.FeatureManager.FeatureExtrusion2(
             True,      # Sd (same direction)
@@ -170,7 +185,7 @@ class ModelingTools:
         if sketching_tools and sketching_tools.current_sketch_name:
             sketch_name = sketching_tools.current_sketch_name
         else:
-            sketch_name = "Sketch1"
+            sketch_name = self._get_latest_sketch_name(doc)
 
         # Select the sketch
         sketch_feature = doc.FeatureByName(sketch_name)
