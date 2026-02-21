@@ -254,16 +254,19 @@ class AppliedFeatureTools:
         radius_m = args["radius"] / 1000.0
         edges = args["edges"]
 
+        # Force rebuild to ensure geometry is fully computed before edge selection
+        doc.ForceRebuild3(True)
+
         sel.clear_selection(doc)
         count = sel.select_multiple_edges(doc, edges, mark=1)
         if count == 0:
             raise Exception("No edges could be selected for fillet")
 
         # FeatureFillet3 parameters:
-        # Options (int bitmask), R1, R2, R3, ...
-        # For constant-radius fillet: Options=1 (simple fillet), R1=radius
+        # Options (int bitmask), R1, R2, R3, Rho, Ftyp, Overflow, Conic
+        # Options=195 required for SolidWorks 2025+
         feature = doc.FeatureManager.FeatureFillet3(
-            1,          # Options: 1 = simple constant radius
+            195,        # Options: 195 required for SW2025+
             radius_m,   # R1: fillet radius
             0.0,        # R2: not used
             0.0,        # R3: not used
@@ -300,19 +303,25 @@ class AppliedFeatureTools:
         }
         chamfer_type_int = type_map.get(chamfer_type, 0)
 
+        # Force rebuild to ensure geometry is fully computed before edge selection
+        doc.ForceRebuild3(True)
+
         sel.clear_selection(doc)
         count = sel.select_multiple_edges(doc, edges, mark=0)
         if count == 0:
             raise Exception("No edges could be selected for chamfer")
 
-        # InsertFeatureChamfer params:
-        # Options, ChamferType, Width, Angle, OtherDist
+        # InsertFeatureChamfer params (8 params required for SW2025+):
+        # Options, ChamferType, Width, Angle, OtherDist, 0, 0, 0
         feature = doc.FeatureManager.InsertFeatureChamfer(
             4,                  # Options: 4 = select edges
             chamfer_type_int,   # Type: 0=equal, 1=dist-angle, 2=two-dist
             distance_m,         # Width (distance 1)
             angle_rad,          # Angle in radians
             distance2_m,        # Other distance
+            0,                  # SW2025 extra param 1
+            0,                  # SW2025 extra param 2
+            0,                  # SW2025 extra param 3
         )
 
         if not feature:
@@ -332,15 +341,31 @@ class AppliedFeatureTools:
         faces = args["facesToRemove"]
         outward = args.get("outward", False)
 
+        # Force rebuild to ensure geometry is fully computed before face selection
+        doc.ForceRebuild3(True)
+
         sel.clear_selection(doc)
         count = sel.select_multiple_faces(doc, faces, mark=0)
         if count == 0:
             raise Exception("No faces could be selected for shell")
 
-        feature = doc.FeatureManager.InsertFeatureShell(
-            thickness_m,
-            outward
-        )
+        # In SW2025, InsertFeatureShell lives on the model (IModelDoc2),
+        # NOT on FeatureManager. It may return None even on success.
+        doc._FlagAsMethod("InsertFeatureShell")
+        feature = doc.InsertFeatureShell(thickness_m, outward)
+
+        # Force rebuild and verify by checking feature tree
+        doc.ForceRebuild3(True)
+
+        if not feature:
+            # InsertFeatureShell may return None even on success in SW2025;
+            # verify by scanning the feature tree for a Shell feature
+            features = doc.FeatureManager.GetFeatures(True)
+            if features:
+                for f in features:
+                    if "Shell" in f.Name:
+                        feature = f
+                        break
 
         if not feature:
             raise Exception("Failed to create shell. Verify face coordinates are correct.")

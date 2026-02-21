@@ -22,6 +22,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from solidworks import selection_helpers as sel
+
 # Force UTF-8 output so Unicode symbols survive the Windows console
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -42,7 +44,7 @@ class TestEntry:
 
 TEST_REGISTRY: list[TestEntry] = []
 
-CATEGORY_ORDER = ["Basic", "Sketch Tools", "Feature Tools", "Integration"]
+CATEGORY_ORDER = ["Basic", "Sketch Tools", "Feature Tools", "MCP Tools", "Integration"]
 
 
 def register_test(name, display_name, category, description, order=0):
@@ -169,27 +171,24 @@ def new_sketch_on_front(sw, template):
 
 
 def select_plane(doc, plane_name):
-    """Select a plane using FeatureByName."""
-    feature = doc.FeatureByName(plane_name)
-    if not feature:
+    """Select a plane — delegates to selection_helpers.select_plane()."""
+    ok = sel.select_plane(doc, plane_name)
+    if not ok:
         raise RuntimeError(f"Plane not found: {plane_name}")
-    doc.ClearSelection2(True)
-    feature.Select2(False, 0)
-    return feature
+    return ok
 
 
 def create_sketch_on_plane(doc, plane_name):
+    """Select a plane and open a sketch on it."""
     select_plane(doc, plane_name)
     doc.SketchManager.InsertSketch(True)
 
 
-def create_sketch_on_face(doc, x, y, z):
-    """Select a solid face at (x,y,z) in metres and open a sketch on it."""
-    callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
-    doc.ClearSelection2(True)
-    ok = doc.Extension.SelectByID2('', 'FACE', x, y, z, False, 0, callout, 0)
+def create_sketch_on_face(doc, x_mm, y_mm, z_mm):
+    """Select a solid face at (x,y,z) in mm and open a sketch on it."""
+    ok = sel.select_face(doc, x_mm, y_mm, z_mm)
     if not ok:
-        raise RuntimeError(f"Could not select face at ({x},{y},{z})")
+        raise RuntimeError(f"Could not select face at ({x_mm},{y_mm},{z_mm}) mm")
     doc.SketchManager.InsertSketch(True)
 
 
@@ -199,13 +198,11 @@ def exit_sketch(doc):
 
 
 def select_sketch(doc, sketch_name):
-    """Select a sketch by name."""
-    feature = doc.FeatureByName(sketch_name)
-    if not feature:
+    """Select a sketch by name — delegates to selection_helpers.select_sketch()."""
+    ok = sel.select_sketch(doc, sketch_name)
+    if not ok:
         raise RuntimeError(f"Sketch not found: {sketch_name}")
-    doc.ClearSelection2(True)
-    feature.Select2(False, 0)
-    return feature
+    return ok
 
 
 def get_latest_sketch_name(doc):
@@ -1101,6 +1098,333 @@ def test_list_features(sw, template):
 
 
 # ===========================================================================
+# TEST FUNCTIONS — MCP Tools (exercise the full MCP _route_tool dispatch)
+# ===========================================================================
+
+
+def create_mcp_server():
+    """Create a SolidWorksMCPServer instance for MCP-level testing."""
+    from server import SolidWorksMCPServer
+    return SolidWorksMCPServer()
+
+
+def mcp_make_cube(server, size_mm=100):
+    """Create a cube end-to-end via MCP tool calls. Returns list of result strings.
+
+    Note: create_extrusion exits sketch mode internally, so we do NOT call
+    exit_sketch before it (that would toggle sketch mode back on).
+    """
+    results = []
+    results.append(server._route_tool("solidworks_new_part", {}))
+    results.append(server._route_tool("solidworks_create_sketch", {"plane": "Front"}))
+    results.append(server._route_tool("solidworks_sketch_rectangle", {
+        "centerX": size_mm / 2, "centerY": size_mm / 2,
+        "width": size_mm, "height": size_mm
+    }))
+    results.append(server._route_tool("solidworks_create_extrusion", {"depth": size_mm}))
+    return results
+
+
+def mcp_check_results(results):
+    """Verify all MCP results start with ✓. Returns True if all pass."""
+    for r in results:
+        if not r.startswith("✓"):
+            log(f"MCP call failed: {r}", "ERROR")
+            return False
+    return True
+
+
+@register_test("mcp_basic_workflow", "MCP Basic Workflow", "MCP Tools",
+               "Create a 100mm cube end-to-end via MCP tool calls", order=0)
+def test_mcp_basic_workflow(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        extrude_result = results[-1]
+        if "Boss-Extrude" not in extrude_result and "Extrusion" not in extrude_result:
+            log(f"Extrusion result missing feature name: {extrude_result}", "ERROR")
+            return False
+
+        log("MCP basic workflow (cube) succeeded", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_basic_workflow FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_fillet", "MCP Fillet", "MCP Tools",
+               "Create cube via MCP, then fillet an edge", order=1)
+def test_mcp_fillet(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        r = server._route_tool("solidworks_fillet", {
+            "radius": 5,
+            "edges": [{"x": 100, "y": 0, "z": 50}]
+        })
+        if not r.startswith("✓"):
+            log(f"Fillet failed: {r}", "ERROR")
+            return False
+        if "Fillet" not in r:
+            log(f"Fillet result missing feature name: {r}", "ERROR")
+            return False
+
+        log("MCP fillet succeeded", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_fillet FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_chamfer", "MCP Chamfer", "MCP Tools",
+               "Create cube via MCP, then chamfer an edge", order=2)
+def test_mcp_chamfer(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        r = server._route_tool("solidworks_chamfer", {
+            "distance": 5,
+            "edges": [{"x": 100, "y": 0, "z": 50}]
+        })
+        if not r.startswith("✓"):
+            log(f"Chamfer failed: {r}", "ERROR")
+            return False
+        if "Chamfer" not in r:
+            log(f"Chamfer result missing feature name: {r}", "ERROR")
+            return False
+
+        log("MCP chamfer succeeded", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_chamfer FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_shell", "MCP Shell", "MCP Tools",
+               "Create cube via MCP, then shell (remove top face)", order=3)
+def test_mcp_shell(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        r = server._route_tool("solidworks_shell", {
+            "thickness": 3,
+            "facesToRemove": [{"x": 50, "y": 100, "z": 50}]
+        })
+        if not r.startswith("✓"):
+            log(f"Shell failed: {r}", "ERROR")
+            return False
+        if "Shell" not in r:
+            log(f"Shell result missing feature name: {r}", "ERROR")
+            return False
+
+        log("MCP shell succeeded", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_shell FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_cut_extrusion", "MCP Cut-Extrusion", "MCP Tools",
+               "Create cube via MCP, then cut a circle through it", order=4)
+def test_mcp_cut_extrusion(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        # Sketch on the front face of the cube (z=0 plane)
+        r = server._route_tool("solidworks_create_sketch", {
+            "faceX": 50, "faceY": 50, "faceZ": 0
+        })
+        if not r.startswith("✓"):
+            log(f"Sketch on face failed: {r}", "ERROR")
+            return False
+
+        r = server._route_tool("solidworks_sketch_circle", {
+            "centerX": 50, "centerY": 50, "radius": 20
+        })
+        if not r.startswith("✓"):
+            log(f"Circle sketch failed: {r}", "ERROR")
+            return False
+
+        # exit_sketch is required before create_cut_extrusion
+        r = server._route_tool("solidworks_exit_sketch", {})
+        if not r.startswith("✓"):
+            log(f"Exit sketch failed: {r}", "ERROR")
+            return False
+
+        r = server._route_tool("solidworks_create_cut_extrusion", {"depth": 50})
+        if not r.startswith("✓"):
+            log(f"Cut-extrusion failed: {r}", "ERROR")
+            return False
+        if "Cut" not in r:
+            log(f"Cut result missing feature name: {r}", "ERROR")
+            return False
+
+        log("MCP cut-extrusion succeeded", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_cut_extrusion FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_mass_properties", "MCP Mass Properties", "MCP Tools",
+               "Create cube via MCP, then verify volume via mass properties", order=5)
+def test_mcp_mass_properties(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        r = server._route_tool("solidworks_get_mass_properties", {})
+        if "Volume" not in r:
+            log(f"Mass properties missing volume: {r}", "ERROR")
+            return False
+
+        for line in r.split("\n"):
+            if "Volume:" in line:
+                vol_str = line.split(":")[1].strip().split(" ")[0]
+                volume = float(vol_str)
+                if abs(volume - 1_000_000) > 1:
+                    log(f"Volume mismatch: expected ~1000000, got {volume}", "ERROR")
+                    return False
+                log(f"Volume verified: {volume:.0f} mm^3", "SUCCESS")
+                break
+
+        log("MCP mass properties succeeded", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_mass_properties FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_list_features", "MCP List Features", "MCP Tools",
+               "Create cube via MCP, then list features and verify extrusion exists", order=6)
+def test_mcp_list_features(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        r = server._route_tool("solidworks_list_features", {})
+        if "Feature Tree" not in r and "feature" not in r.lower():
+            log(f"Unexpected list_features result: {r}", "ERROR")
+            return False
+        if "Extrusion" not in r and "Extrude" not in r:
+            log(f"Feature tree missing extrusion: {r}", "ERROR")
+            return False
+
+        log("MCP list features succeeded", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_list_features FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_full_integration", "MCP Full Integration", "MCP Tools",
+               "Multi-step MCP workflow: cube + fillet + cut + list_features + mass_properties",
+               order=7)
+def test_mcp_full_integration(sw, template):
+    try:
+        server = create_mcp_server()
+
+        # Step 1: Create cube
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+        log("Step 1: Cube created", "SUCCESS")
+
+        # Step 2: Fillet one edge
+        r = server._route_tool("solidworks_fillet", {
+            "radius": 5,
+            "edges": [{"x": 100, "y": 0, "z": 50}]
+        })
+        if not r.startswith("✓"):
+            log(f"Fillet failed: {r}", "ERROR")
+            return False
+        log("Step 2: Fillet applied", "SUCCESS")
+
+        # Step 3: Cut-extrusion (hole on front face)
+        r = server._route_tool("solidworks_create_sketch", {
+            "faceX": 50, "faceY": 50, "faceZ": 0
+        })
+        if not r.startswith("✓"):
+            log(f"Sketch on face failed: {r}", "ERROR")
+            return False
+
+        r = server._route_tool("solidworks_sketch_circle", {
+            "centerX": 50, "centerY": 50, "radius": 15
+        })
+        if not r.startswith("✓"):
+            log(f"Circle failed: {r}", "ERROR")
+            return False
+
+        r = server._route_tool("solidworks_exit_sketch", {})
+        if not r.startswith("✓"):
+            log(f"Exit sketch failed: {r}", "ERROR")
+            return False
+
+        r = server._route_tool("solidworks_create_cut_extrusion", {
+            "depth": 100, "endCondition": "THROUGH_ALL"
+        })
+        if not r.startswith("✓"):
+            log(f"Cut-extrusion failed: {r}", "ERROR")
+            return False
+        log("Step 3: Through-all cut created", "SUCCESS")
+
+        # Step 4: List features (should have Boss-Extrude, Fillet, Cut-Extrude)
+        r = server._route_tool("solidworks_list_features", {})
+        if "Fillet" not in r:
+            log(f"Feature tree missing Fillet: {r}", "ERROR")
+            return False
+        log("Step 4: Feature tree verified", "SUCCESS")
+
+        # Step 5: Mass properties (volume should be less than 1,000,000)
+        r = server._route_tool("solidworks_get_mass_properties", {})
+        if "Volume" not in r:
+            log(f"Mass properties missing volume: {r}", "ERROR")
+            return False
+        for line in r.split("\n"):
+            if "Volume:" in line:
+                vol_str = line.split(":")[1].strip().split(" ")[0]
+                volume = float(vol_str)
+                if volume >= 1_000_000:
+                    log(f"Volume should be < 1M after cuts, got {volume}", "ERROR")
+                    return False
+                log(f"Step 5: Volume {volume:.0f} mm^3 (correctly less than original)", "SUCCESS")
+                break
+
+        log("MCP full integration passed", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_full_integration FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+# ===========================================================================
 # TEST FUNCTIONS — Integration (sequential sub-tests in one document)
 # ===========================================================================
 
@@ -1210,7 +1534,7 @@ def test_integration_suite(sw, template):
     # --- Cut-extrusion ---
     subsection("Cut-extrusion (remove material)")
     try:
-        create_sketch_on_face(doc, 0.05, 0.05, 0.1)
+        create_sketch_on_face(doc, 50, 50, 100)
         _result("InsertSketch on top face of solid", True)
     except Exception as e:
         _result("InsertSketch on top face of solid", False, str(e))
@@ -1266,7 +1590,7 @@ def test_integration_suite(sw, template):
     # --- Cut-extrusion reversed ---
     subsection("Cut-extrusion reversed direction")
     try:
-        create_sketch_on_face(doc, 0.03, 0.03, 0.0)
+        create_sketch_on_face(doc, 30, 30, 0)
         doc.SketchManager.CreateCornerRectangle(0.01, 0.01, 0.0, 0.04, 0.04, 0.0)
         exit_sketch(doc)
         feat = extrude(doc, "Sketch3", 30.0, cut=True, reverse=True)
@@ -1280,10 +1604,11 @@ def test_integration_suite(sw, template):
     for i in range(2):
         sn = 4 + i
         sketch_name = f"Sketch{sn}"
-        cx = 0.02 + i * 0.05
+        cx_mm = 20 + i * 50
+        cx_m = cx_mm / 1000.0
         try:
-            create_sketch_on_face(doc, cx, 0.05, 0.1)
-            doc.SketchManager.CreateCircleByRadius(cx, 0.05, 0.1, 0.005)
+            create_sketch_on_face(doc, cx_mm, 50, 100)
+            doc.SketchManager.CreateCircleByRadius(cx_m, 0.05, 0.1, 0.005)
             exit_sketch(doc)
             feat = extrude(doc, sketch_name, 15.0, cut=True, reverse=False)
             _result(f"Cut #{i+1} using {sketch_name}", feat is not None)
