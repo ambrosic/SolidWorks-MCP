@@ -212,6 +212,10 @@ class ModelingTools:
         if not doc:
             raise Exception("No active document")
 
+        # Force rebuild to ensure geometry is fully computed (especially
+        # after fillet/chamfer/shell operations that modify the body)
+        doc.ForceRebuild3(True)
+
         # Get current sketch name from sketching tools
         if sketching_tools and sketching_tools.current_sketch_name:
             sketch_name = sketching_tools.current_sketch_name

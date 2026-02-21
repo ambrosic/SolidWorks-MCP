@@ -1270,7 +1270,11 @@ def test_mcp_cut_extrusion(sw, template):
             log(f"Exit sketch failed: {r}", "ERROR")
             return False
 
-        r = server._route_tool("solidworks_create_cut_extrusion", {"depth": 50})
+        # reverse=True because the front face (z=0) normal points outward;
+        # we need to cut INTO the body
+        r = server._route_tool("solidworks_create_cut_extrusion", {
+            "depth": 50, "reverse": True
+        })
         if not r.startswith("✓"):
             log(f"Cut-extrusion failed: {r}", "ERROR")
             return False
@@ -1364,11 +1368,11 @@ def test_mcp_full_integration(sw, template):
         if not r.startswith("✓"):
             log(f"Fillet failed: {r}", "ERROR")
             return False
-        log("Step 2: Fillet applied", "SUCCESS")
+        log("Step 2: Fillet created", "SUCCESS")
 
-        # Step 3: Cut-extrusion (hole on front face)
+        # Step 3: Cut-extrusion (hole on top face)
         r = server._route_tool("solidworks_create_sketch", {
-            "faceX": 50, "faceY": 50, "faceZ": 0
+            "faceX": 50, "faceY": 100, "faceZ": 50
         })
         if not r.startswith("✓"):
             log(f"Sketch on face failed: {r}", "ERROR")
@@ -1386,8 +1390,11 @@ def test_mcp_full_integration(sw, template):
             log(f"Exit sketch failed: {r}", "ERROR")
             return False
 
+        # Cut from top face downward into the body (reverse=True because
+        # top face normal points upward, we need to cut INTO the body)
         r = server._route_tool("solidworks_create_cut_extrusion", {
-            "depth": 100, "endCondition": "THROUGH_ALL"
+            "depth": 50,
+            "reverse": True
         })
         if not r.startswith("✓"):
             log(f"Cut-extrusion failed: {r}", "ERROR")
