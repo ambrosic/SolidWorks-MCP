@@ -41,6 +41,12 @@ class ModelingTools:
                             "type": "boolean",
                             "default": False,
                             "description": "Reverse direction"
+                        },
+                        "endCondition": {
+                            "type": "string",
+                            "enum": ["BLIND", "THROUGH_ALL"],
+                            "description": "End condition. BLIND (default): extrude to depth. THROUGH_ALL: through entire body.",
+                            "default": "BLIND"
                         }
                     },
                     "required": ["depth"]
@@ -60,6 +66,12 @@ class ModelingTools:
                             "type": "boolean",
                             "default": False,
                             "description": "Reverse cut direction"
+                        },
+                        "endCondition": {
+                            "type": "string",
+                            "enum": ["BLIND", "THROUGH_ALL"],
+                            "description": "End condition. BLIND (default): cut to depth. THROUGH_ALL: cut through entire body.",
+                            "default": "BLIND"
                         }
                     },
                     "required": ["depth"]
@@ -68,6 +80,14 @@ class ModelingTools:
             Tool(
                 name="solidworks_get_mass_properties",
                 description="Evaluate and return mass properties of the active part: mass, volume, surface area, center of mass, and moments of inertia. The part must have material assigned for accurate mass; volume and surface area are always available.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {}
+                }
+            ),
+            Tool(
+                name="solidworks_list_features",
+                description="List all features in the feature tree of the active part. Returns feature names and types. Useful for discovering feature names needed by pattern, mirror, and other operations.",
                 inputSchema={
                     "type": "object",
                     "properties": {}
@@ -103,6 +123,8 @@ class ModelingTools:
             return self.create_cut_extrusion(args, sketching_tools)
         elif tool_name == "solidworks_get_mass_properties":
             return self.get_mass_properties()
+        elif tool_name == "solidworks_list_features":
+            return self.list_features()
         else:
             raise Exception(f"Unknown modeling tool: {tool_name}")
     
@@ -145,13 +167,15 @@ class ModelingTools:
         # Convert mm to meters
         depth = args["depth"] / 1000.0
         reverse = args.get("reverse", False)
+        end_condition = args.get("endCondition", "BLIND")
+        end_type = {"BLIND": 0, "THROUGH_ALL": 1}.get(end_condition, 0)
 
         # Create extrusion with all 23 required parameters
         feature = doc.FeatureManager.FeatureExtrusion2(
             True,      # Sd (same direction)
             reverse,   # Flip direction
             False,     # Dir
-            0,         # T1 (end condition type - 0 = Blind)
+            end_type,  # T1 (end condition type - 0 = Blind, 1 = Through All)
             0,         # T2
             depth,     # D1 (depth in meters)
             0.0,       # D2
@@ -175,17 +199,22 @@ class ModelingTools:
         
         if not feature:
             raise Exception("Failed to create extrusion")
-        
+
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        
-        logger.info(f"Extrusion created: {args['depth']}mm")
-        return f"✓ Extrusion {args['depth']}mm created"
+
+        logger.info(f"Extrusion '{feature_name}' created: {args['depth']}mm ({end_condition})")
+        return f"✓ Extrusion '{feature_name}' {args['depth']}mm created ({end_condition})"
 
     def create_cut_extrusion(self, args: dict, sketching_tools) -> str:
         """Create cut-extrusion (removes material) from current sketch"""
         doc = self.connection.get_active_doc()
         if not doc:
             raise Exception("No active document")
+
+        # Force rebuild to ensure geometry is fully computed (especially
+        # after fillet/chamfer/shell operations that modify the body)
+        doc.ForceRebuild3(True)
 
         # Get current sketch name from sketching tools
         if sketching_tools and sketching_tools.current_sketch_name:
@@ -203,6 +232,8 @@ class ModelingTools:
         # Convert mm to meters
         depth = args["depth"] / 1000.0
         reverse = args.get("reverse", False)
+        end_condition = args.get("endCondition", "BLIND")
+        end_type = {"BLIND": 0, "THROUGH_ALL": 1}.get(end_condition, 0)
 
         # FeatureCut4 parameter names from sldworks.tlb (SW 2025 v33, 27 params):
         # Sd, Flip, Dir, T1, T2, D1, D2, Dchk1, Dchk2, Ddir1, Ddir2, Dang1, Dang2,
@@ -214,7 +245,7 @@ class ModelingTools:
             True,      # Sd
             reverse,   # Flip
             False,     # Dir
-            0,         # T1 (Blind)
+            end_type,  # T1 (0=Blind, 1=Through All)
             0,         # T2
             depth,     # D1
             0.0,       # D2
@@ -243,10 +274,11 @@ class ModelingTools:
         if not feature:
             raise Exception("Failed to create cut-extrusion")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
 
-        logger.info(f"Cut-extrusion created: {args['depth']}mm")
-        return f"✓ Cut-extrusion {args['depth']}mm created"
+        logger.info(f"Cut-extrusion '{feature_name}' created: {args['depth']}mm ({end_condition})")
+        return f"✓ Cut-extrusion '{feature_name}' {args['depth']}mm created ({end_condition})"
 
     def get_mass_properties(self) -> str:
         """Evaluate mass properties of the active part"""
@@ -294,4 +326,26 @@ class ModelingTools:
         result += f"    Ixy={ixy:.4f}  Ixz={ixz:.4f}  Iyz={iyz:.4f}"
 
         logger.info(f"Mass properties: mass={mass_kg:.6f}kg, volume={volume_mm3:.2f}mm^3")
+        return result
+
+    def list_features(self) -> str:
+        """List all features in the feature tree"""
+        doc = self.connection.get_active_doc()
+        if not doc:
+            raise Exception("No active document")
+
+        features = doc.FeatureManager.GetFeatures(True)
+        if not features:
+            return "No features found in the feature tree."
+
+        result = "Feature Tree:\n"
+        for feature in features:
+            name = feature.Name
+            type_name = feature.GetTypeName2
+            # Skip origin-level items for cleaner output
+            if type_name in ("OriginProfileFeature", "MaterialFolder", "SensorFolder"):
+                continue
+            result += f"  {name} ({type_name})\n"
+
+        logger.info(f"Listed {len(features)} features")
         return result
