@@ -34,8 +34,7 @@ class SketchingTools:
                     "properties": {
                         "plane": {
                             "type": "string",
-                            "enum": ["Front", "Top", "Right"],
-                            "description": "Reference plane for sketch"
+                            "description": "Reference plane name. Standard planes: 'Front', 'Top', 'Right'. Also accepts custom reference plane names like 'Plane1', 'Plane2', etc."
                         },
                         "faceX": {
                             "type": "number",
@@ -571,12 +570,13 @@ class SketchingTools:
             location = f"face at ({args['faceX']}, {args['faceY']}, {args['faceZ']}) mm"
         else:
             plane_name = args.get("plane", "Front")
-            plane_feature_name = plane_map.get(plane_name)
-            if not plane_feature_name:
-                raise Exception(f"Unknown plane: {plane_name}")
+            plane_feature_name = plane_map.get(plane_name, plane_name)
             plane_feature = doc.FeatureByName(plane_feature_name)
             if not plane_feature:
-                raise Exception(f"Could not find {plane_feature_name}")
+                raise Exception(
+                    f"Could not find plane: {plane_name}. "
+                    f"Use 'Front', 'Top', 'Right', or a custom reference plane name like 'Plane1'."
+                )
             plane_feature.Select2(False, 0)
             doc.SketchManager.InsertSketch(True)
             location = f"{plane_name} plane"
@@ -588,9 +588,9 @@ class SketchingTools:
         logger.info(f"Sketch created: {self.current_sketch_name} on {location}")
 
         if created_new:
-            return f"✓ New part created. Sketch on {location}"
+            return f"✓ New part created. Sketch '{self.current_sketch_name}' on {location}"
         else:
-            return f"✓ Sketch created on {location}"
+            return f"✓ Sketch '{self.current_sketch_name}' created on {location}"
     
     def _calculate_position(self, args: dict, shape_width: float, shape_height: float) -> tuple:
         """Calculate position based on absolute or relative coordinates"""
@@ -1327,8 +1327,25 @@ class SketchingTools:
         doc = self.connection.get_active_doc()
         if not doc:
             raise Exception("No active document")
-        
+
         doc.SketchManager.InsertSketch(True)
-        
-        logger.info("Exited sketch")
-        return "✓ Exited sketch mode"
+
+        # Find the actual sketch name from the feature tree
+        actual_name = None
+        try:
+            features = doc.FeatureManager.GetFeatures(True)
+            if features:
+                for feature in reversed(features):
+                    if feature.GetTypeName2 == "ProfileFeature":
+                        actual_name = feature.Name
+                        break
+        except Exception as e:
+            logger.warning(f"Could not verify sketch name: {e}")
+
+        if actual_name:
+            self.current_sketch_name = actual_name
+            logger.info(f"Exited sketch: {actual_name}")
+            return f"✓ Exited sketch mode ({actual_name})"
+        else:
+            logger.warning("Exited sketch but could not find it in feature tree")
+            return "✓ Exited sketch mode"

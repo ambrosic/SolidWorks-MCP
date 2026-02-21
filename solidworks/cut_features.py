@@ -108,6 +108,17 @@ class CutFeatureTools:
             raise Exception(f"Unknown cut feature tool: {tool_name}")
         return handler()
 
+    def _list_available_sketches(self, doc) -> str:
+        """List all sketch names in the feature tree for error messages."""
+        try:
+            features = doc.FeatureManager.GetFeatures(True)
+            if features:
+                names = [f.Name for f in features if f.GetTypeName2 == "ProfileFeature"]
+                return ", ".join(names) if names else "none found"
+        except Exception:
+            pass
+        return "none found"
+
     def _get_latest_sketch_name(self, doc) -> str:
         try:
             features = doc.FeatureManager.GetFeatures(True)
@@ -167,9 +178,10 @@ class CutFeatureTools:
         if not feature:
             raise Exception("Failed to create cut revolve. Ensure sketch contains a centerline for the axis.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Cut revolve created: {angle_deg}°")
-        return f"✓ Cut revolve {angle_deg}° created"
+        logger.info(f"Cut revolve '{feature_name}' created: {angle_deg}°")
+        return f"✓ Cut revolve '{feature_name}' {angle_deg}° created"
 
     def cut_sweep(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -217,9 +229,10 @@ class CutFeatureTools:
                 "and path is an open sketch."
             )
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Cut sweep created: profile={profile_name}, path={path_name}")
-        return f"✓ Cut sweep created (profile: {profile_name}, path: {path_name})"
+        logger.info(f"Cut sweep '{feature_name}' created: profile={profile_name}, path={path_name}")
+        return f"✓ Cut sweep '{feature_name}' created (profile: {profile_name}, path: {path_name})"
 
     def cut_loft(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -238,30 +251,38 @@ class CutFeatureTools:
         sel.clear_selection(doc)
         for i, name in enumerate(profile_names):
             if not sel.select_sketch(doc, name, mark=1, append=(i > 0)):
-                raise Exception(f"Could not select profile sketch: {name}")
+                available = self._list_available_sketches(doc)
+                raise Exception(
+                    f"Could not select profile sketch: {name}. "
+                    f"Available sketches in feature tree: [{available}]"
+                )
 
-        # InsertCutBlend2 parameters:
+        # InsertCutBlend2 parameters (18 params for SW2025):
+        # Closed, KeepTangency, ForceNonRational, TessToleranceFactor,
+        # StartMatchingType, EndMatchingType,
+        # StartTangentLength, EndTangentLength,
+        # MaintainTangency, Merge, IsThinBody,
+        # Thickness1, Thickness2, ThinType,
+        # UseFeatScope, UseAutoSelect, Close, GuideCurveInfluence
         feature = doc.FeatureManager.InsertCutBlend2(
             False,  # Closed
             True,   # KeepTangency
             True,   # ForceNonRational
             1.0,    # TessToleranceFactor
-            0,      # StartMatchingType
-            0,      # EndMatchingType
+            0,      # StartMatchingType: 0 = None
+            0,      # EndMatchingType: 0 = None
             1.0,    # StartTangentLength
             1.0,    # EndTangentLength
             False,  # MaintainTangency
-            True,   # UseFeatScope
-            True,   # UseAutoSelect
-            0,      # GuideCurveInfluence
-            0,      # StartTangentType
-            0,      # EndTangentType
-            1.0,    # StartTangentWeightFactor
-            1.0,    # EndTangentWeightFactor
-            False,  # Close
+            True,   # Merge
+            False,  # IsThinBody
             0.0,    # Thickness1
             0.0,    # Thickness2
             0,      # ThinType
+            True,   # UseFeatScope
+            True,   # UseAutoSelect
+            True,   # Close (feature scope)
+            0,      # GuideCurveInfluence
         )
 
         if not feature:
@@ -269,9 +290,10 @@ class CutFeatureTools:
                 "Failed to create cut loft. Ensure profiles are closed sketches on different planes."
             )
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Cut loft created from {len(profile_names)} profiles")
-        return f"✓ Cut loft created from {len(profile_names)} profiles: {', '.join(profile_names)}"
+        logger.info(f"Cut loft '{feature_name}' created from {len(profile_names)} profiles")
+        return f"✓ Cut loft '{feature_name}' created from {len(profile_names)} profiles: {', '.join(profile_names)}"
 
     def boundary_cut(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -292,7 +314,11 @@ class CutFeatureTools:
         sel.clear_selection(doc)
         for i, name in enumerate(profiles):
             if not sel.select_sketch(doc, name, mark=1, append=(i > 0)):
-                raise Exception(f"Could not select profile sketch: {name}")
+                available = self._list_available_sketches(doc)
+                raise Exception(
+                    f"Could not select profile sketch: {name}. "
+                    f"Available sketches in feature tree: [{available}]"
+                )
 
         # Select guide curves if provided (mark=2)
         for name in guide_curves:
@@ -306,6 +332,7 @@ class CutFeatureTools:
                 "Failed to create boundary cut. Ensure profiles are closed sketches on different planes."
             )
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Boundary cut created from {len(profiles)} profiles")
-        return f"✓ Boundary cut created from {len(profiles)} profiles"
+        logger.info(f"Boundary cut '{feature_name}' created from {len(profiles)} profiles")
+        return f"✓ Boundary cut '{feature_name}' created from {len(profiles)} profiles"

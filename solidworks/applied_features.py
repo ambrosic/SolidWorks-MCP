@@ -276,9 +276,10 @@ class AppliedFeatureTools:
         if not feature:
             raise Exception("Failed to create fillet. Verify edge coordinates are correct.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Fillet created: {args['radius']}mm radius on {count} edge(s)")
-        return f"✓ Fillet {args['radius']}mm radius applied to {count} edge(s)"
+        logger.info(f"Fillet '{feature_name}' created: {args['radius']}mm radius on {count} edge(s)")
+        return f"✓ Fillet '{feature_name}' {args['radius']}mm radius applied to {count} edge(s)"
 
     def chamfer(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -317,9 +318,10 @@ class AppliedFeatureTools:
         if not feature:
             raise Exception("Failed to create chamfer. Verify edge coordinates are correct.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Chamfer created: {args['distance']}mm on {count} edge(s)")
-        return f"✓ Chamfer {args['distance']}mm applied to {count} edge(s)"
+        logger.info(f"Chamfer '{feature_name}' created: {args['distance']}mm on {count} edge(s)")
+        return f"✓ Chamfer '{feature_name}' {args['distance']}mm applied to {count} edge(s)"
 
     def shell(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -343,9 +345,10 @@ class AppliedFeatureTools:
         if not feature:
             raise Exception("Failed to create shell. Verify face coordinates are correct.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Shell created: {args['thickness']}mm thickness, {count} face(s) removed")
-        return f"✓ Shell {args['thickness']}mm created with {count} face(s) removed"
+        logger.info(f"Shell '{feature_name}' created: {args['thickness']}mm thickness, {count} face(s) removed")
+        return f"✓ Shell '{feature_name}' {args['thickness']}mm created with {count} face(s) removed"
 
     def draft(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -382,9 +385,10 @@ class AppliedFeatureTools:
         if not feature:
             raise Exception("Failed to create draft. Verify selections are correct.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Draft created: {args['angle']}° on {count} face(s)")
-        return f"✓ Draft {args['angle']}° applied to {count} face(s)"
+        logger.info(f"Draft '{feature_name}' created: {args['angle']}° on {count} face(s)")
+        return f"✓ Draft '{feature_name}' {args['angle']}° applied to {count} face(s)"
 
     def rib(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -431,9 +435,10 @@ class AppliedFeatureTools:
         if not feature:
             raise Exception("Failed to create rib. Ensure sketch profile intersects the body.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Rib created: {args['thickness']}mm thickness")
-        return f"✓ Rib {args['thickness']}mm created"
+        logger.info(f"Rib '{feature_name}' created: {args['thickness']}mm thickness")
+        return f"✓ Rib '{feature_name}' {args['thickness']}mm created"
 
     def wrap(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -479,9 +484,10 @@ class AppliedFeatureTools:
         if not feature:
             raise Exception("Failed to create wrap feature. Ensure sketch is on a plane near the target face.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Wrap created: {wrap_type}, depth={args.get('depth', 1.0)}mm")
-        return f"✓ Wrap ({wrap_type}) created"
+        logger.info(f"Wrap '{feature_name}' created: {wrap_type}, depth={args.get('depth', 1.0)}mm")
+        return f"✓ Wrap '{feature_name}' ({wrap_type}) created"
 
     def intersect(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -504,6 +510,7 @@ class AppliedFeatureTools:
         if not feature:
             raise Exception("Failed to create intersect feature. Ensure overlapping bodies exist.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info("Intersect feature created")
-        return "✓ Intersect feature created"
+        logger.info(f"Intersect '{feature_name}' created")
+        return f"✓ Intersect '{feature_name}' created"

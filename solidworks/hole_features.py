@@ -204,9 +204,10 @@ class HoleFeatureTools:
                 "Workaround: create a sketch circle and use cut-extrude instead."
             )
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Hole Wizard hole created: {hole_type}")
-        return f"✓ Hole Wizard {hole_type} hole created"
+        logger.info(f"Hole Wizard '{feature_name}' created: {hole_type}")
+        return f"✓ Hole Wizard '{feature_name}' {hole_type} hole created"
 
     def thread(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -233,6 +234,7 @@ class HoleFeatureTools:
         if not feature:
             raise Exception("Failed to create cosmetic thread. Ensure a circular edge is selected.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Cosmetic thread created: depth={args['depth']}mm, diameter={args['diameter']}mm")
-        return f"✓ Cosmetic thread created: {args['depth']}mm deep, {args['diameter']}mm diameter"
+        logger.info(f"Cosmetic thread '{feature_name}' created: depth={args['depth']}mm, diameter={args['diameter']}mm")
+        return f"✓ Cosmetic thread '{feature_name}' created: {args['depth']}mm deep, {args['diameter']}mm diameter"

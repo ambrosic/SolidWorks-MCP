@@ -221,10 +221,11 @@ class PatternTools:
         if not feature:
             raise Exception("Failed to create linear pattern. Verify feature names and direction edge.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
         total = count1 * count2 if use_dir2 else count1
-        logger.info(f"Linear pattern created: {total} instances")
-        return f"✓ Linear pattern created: {count1}x{count2 if use_dir2 else 1} = {total} instances"
+        logger.info(f"Linear pattern '{feature_name}' created: {total} instances")
+        return f"✓ Linear pattern '{feature_name}' created: {count1}x{count2 if use_dir2 else 1} = {total} instances"
 
     def circular_pattern(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -274,9 +275,10 @@ class PatternTools:
         if not feature:
             raise Exception("Failed to create circular pattern. Verify feature names and axis.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Circular pattern created: {count} instances over {angle_deg}°")
-        return f"✓ Circular pattern created: {count} instances over {angle_deg}°"
+        logger.info(f"Circular pattern '{feature_name}' created: {count} instances over {angle_deg}°")
+        return f"✓ Circular pattern '{feature_name}' created: {count} instances over {angle_deg}°"
 
     def mirror(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -317,6 +319,7 @@ class PatternTools:
         if not feature:
             raise Exception("Failed to create mirror feature. Verify plane and feature selections.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Mirror created for {len(features)} feature(s)")
-        return f"✓ Mirror created for {len(features)} feature(s)"
+        logger.info(f"Mirror '{feature_name}' created for {len(features)} feature(s)")
+        return f"✓ Mirror '{feature_name}' created for {len(features)} feature(s)"

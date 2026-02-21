@@ -263,10 +263,11 @@ class ReferenceGeometryTools:
             if not feature:
                 raise Exception("Failed to create offset reference plane")
 
+            plane_name = feature.Name
             doc.ViewZoomtofit2()
             offset_mm = args.get("offset", 0)
-            logger.info(f"Reference plane created: offset {offset_mm}mm from {ref_plane_name}")
-            return f"✓ Reference plane created: offset {offset_mm}mm from {ref_plane_name}"
+            logger.info(f"Reference plane '{plane_name}' created: offset {offset_mm}mm from {ref_plane_name}")
+            return f"✓ Reference plane '{plane_name}' created: offset {offset_mm}mm from {ref_plane_name}"
 
         elif plane_type == "ANGLE":
             angle_deg = args.get("angle", 0)
@@ -296,9 +297,10 @@ class ReferenceGeometryTools:
             if not feature:
                 raise Exception("Failed to create angled reference plane")
 
+            plane_name = feature.Name
             doc.ViewZoomtofit2()
-            logger.info(f"Reference plane created: {angle_deg}° from {ref_plane_name}")
-            return f"✓ Reference plane created: {angle_deg}° from {ref_plane_name}"
+            logger.info(f"Reference plane '{plane_name}' created: {angle_deg}° from {ref_plane_name}")
+            return f"✓ Reference plane '{plane_name}' created: {angle_deg}° from {ref_plane_name}"
 
         elif plane_type == "THROUGH_POINT":
             point = args.get("point")
@@ -326,9 +328,10 @@ class ReferenceGeometryTools:
             if not feature:
                 raise Exception("Failed to create reference plane through point")
 
+            plane_name = feature.Name
             doc.ViewZoomtofit2()
-            logger.info(f"Reference plane created through point, parallel to {ref_plane_name}")
-            return f"✓ Reference plane created through point, parallel to {ref_plane_name}"
+            logger.info(f"Reference plane '{plane_name}' created through point, parallel to {ref_plane_name}")
+            return f"✓ Reference plane '{plane_name}' created through point, parallel to {ref_plane_name}"
 
         else:
             raise Exception(f"Unknown plane type: {plane_type}")
@@ -371,9 +374,10 @@ class ReferenceGeometryTools:
         if not feature:
             raise Exception("Failed to create reference axis. Verify selections.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Reference axis created ({axis_type})")
-        return f"✓ Reference axis created ({axis_type})"
+        logger.info(f"Reference axis '{feature_name}' created ({axis_type})")
+        return f"✓ Reference axis '{feature_name}' created ({axis_type})"
 
     def ref_point(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -403,9 +407,10 @@ class ReferenceGeometryTools:
             if not feature:
                 raise Exception("Failed to create reference point at coordinates")
 
+            feature_name = feature.Name
             doc.ViewZoomtofit2()
-            logger.info(f"Reference point created at ({x}, {y}, {z}) mm")
-            return f"✓ Reference point created at ({x}, {y}, {z}) mm"
+            logger.info(f"Reference point '{feature_name}' created at ({x}, {y}, {z}) mm")
+            return f"✓ Reference point '{feature_name}' created at ({x}, {y}, {z}) mm"
 
         elif point_type == "ARC_CENTER":
             edge = args.get("edge")
@@ -421,9 +426,10 @@ class ReferenceGeometryTools:
             if not feature:
                 raise Exception("Failed to create reference point at arc center")
 
+            feature_name = feature.Name
             doc.ViewZoomtofit2()
-            logger.info("Reference point created at arc center")
-            return "✓ Reference point created at arc center"
+            logger.info(f"Reference point '{feature_name}' created at arc center")
+            return f"✓ Reference point '{feature_name}' created at arc center"
 
         elif point_type == "FACE_CENTER":
             face = args.get("face")
@@ -439,9 +445,10 @@ class ReferenceGeometryTools:
             if not feature:
                 raise Exception("Failed to create reference point on face")
 
+            feature_name = feature.Name
             doc.ViewZoomtofit2()
-            logger.info("Reference point created at face center")
-            return "✓ Reference point created at face center"
+            logger.info(f"Reference point '{feature_name}' created at face center")
+            return f"✓ Reference point '{feature_name}' created at face center"
 
         elif point_type == "ON_EDGE":
             edge = args.get("edge")
@@ -457,9 +464,10 @@ class ReferenceGeometryTools:
             if not feature:
                 raise Exception("Failed to create reference point on edge")
 
+            feature_name = feature.Name
             doc.ViewZoomtofit2()
-            logger.info("Reference point created on edge")
-            return "✓ Reference point created on edge"
+            logger.info(f"Reference point '{feature_name}' created on edge")
+            return f"✓ Reference point '{feature_name}' created on edge"
 
         else:
             raise Exception(f"Unknown point type: {point_type}")
@@ -497,6 +505,7 @@ class ReferenceGeometryTools:
         if not feature:
             raise Exception("Failed to create coordinate system. Verify origin vertex selection.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Coordinate system created at ({origin['x']}, {origin['y']}, {origin['z']}) mm")
-        return f"✓ Coordinate system created at ({origin['x']}, {origin['y']}, {origin['z']}) mm"
+        logger.info(f"Coordinate system '{feature_name}' created at ({origin['x']}, {origin['y']}, {origin['z']}) mm")
+        return f"✓ Coordinate system '{feature_name}' created at ({origin['x']}, {origin['y']}, {origin['z']}) mm"

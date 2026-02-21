@@ -58,7 +58,7 @@ class FeatureTools:
             ),
             Tool(
                 name="solidworks_loft",
-                description="Create a lofted boss/base by blending between two or more profile sketches. The profiles should be closed sketches on different planes. They are connected in the order provided.",
+                description="Create a lofted boss/base by blending between two or more profile sketches. The profiles should be closed sketches on different planes. They are connected in the order provided. Workflow: create_sketch on Front plane, draw profile, exit_sketch (returns sketch name); create ref_plane offset from Front (returns plane name e.g. 'Plane1'); create_sketch on that plane name, draw second profile, exit_sketch; then call loft with the sketch names.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -107,6 +107,17 @@ class FeatureTools:
         if not handler:
             raise Exception(f"Unknown feature tool: {tool_name}")
         return handler()
+
+    def _list_available_sketches(self, doc) -> str:
+        """List all sketch names in the feature tree for error messages."""
+        try:
+            features = doc.FeatureManager.GetFeatures(True)
+            if features:
+                names = [f.Name for f in features if f.GetTypeName2 == "ProfileFeature"]
+                return ", ".join(names) if names else "none found"
+        except Exception:
+            pass
+        return "none found"
 
     def _get_latest_sketch_name(self, doc) -> str:
         """Walk the feature tree in reverse to find the most recent sketch."""
@@ -175,9 +186,10 @@ class FeatureTools:
         if not feature:
             raise Exception("Failed to create revolve. Ensure sketch contains a centerline for the axis.")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Revolve created: {angle_deg}°")
-        return f"✓ Revolve {angle_deg}° created"
+        logger.info(f"Revolve '{feature_name}' created: {angle_deg}°")
+        return f"✓ Revolve '{feature_name}' {angle_deg}° created"
 
     def sweep(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -229,9 +241,10 @@ class FeatureTools:
                 "and path is an open sketch on a different plane."
             )
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Sweep created: profile={profile_name}, path={path_name}")
-        return f"✓ Sweep created (profile: {profile_name}, path: {path_name})"
+        logger.info(f"Sweep '{feature_name}' created: profile={profile_name}, path={path_name}")
+        return f"✓ Sweep '{feature_name}' created (profile: {profile_name}, path: {path_name})"
 
     def loft(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -250,16 +263,19 @@ class FeatureTools:
         sel.clear_selection(doc)
         for i, name in enumerate(profile_names):
             if not sel.select_sketch(doc, name, mark=1, append=(i > 0)):
-                raise Exception(f"Could not select profile sketch: {name}")
+                available = self._list_available_sketches(doc)
+                raise Exception(
+                    f"Could not select profile sketch: {name}. "
+                    f"Available sketches in feature tree: [{available}]"
+                )
 
-        # InsertProtrusionBlend2 parameters:
+        # InsertProtrusionBlend2 parameters (18 params for SW2025):
         # Closed, KeepTangency, ForceNonRational, TessToleranceFactor,
         # StartMatchingType, EndMatchingType,
         # StartTangentLength, EndTangentLength,
-        # MaintainTangency, Merge, UseFeatScope, UseAutoSelect,
-        # GuideCurveInfluence, StartTangentType, EndTangentType,
-        # StartTangentWeightFactor, EndTangentWeightFactor,
-        # Close, Thickness1, Thickness2, ThinType
+        # MaintainTangency, Merge, IsThinBody,
+        # Thickness1, Thickness2, ThinType,
+        # UseFeatScope, UseAutoSelect, Close, GuideCurveInfluence
         feature = doc.FeatureManager.InsertProtrusionBlend2(
             False,  # Closed
             True,   # KeepTangency
@@ -271,17 +287,14 @@ class FeatureTools:
             1.0,    # EndTangentLength
             False,  # MaintainTangency
             True,   # Merge
-            True,   # UseFeatScope
-            True,   # UseAutoSelect
-            0,      # GuideCurveInfluence
-            0,      # StartTangentType
-            0,      # EndTangentType
-            1.0,    # StartTangentWeightFactor
-            1.0,    # EndTangentWeightFactor
-            False,  # Close
+            False,  # IsThinBody
             0.0,    # Thickness1
             0.0,    # Thickness2
             0,      # ThinType
+            True,   # UseFeatScope
+            True,   # UseAutoSelect
+            True,   # Close (feature scope)
+            0,      # GuideCurveInfluence
         )
 
         if not feature:
@@ -289,9 +302,10 @@ class FeatureTools:
                 "Failed to create loft. Ensure profiles are closed sketches on different planes."
             )
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Loft created from {len(profile_names)} profiles")
-        return f"✓ Loft created from {len(profile_names)} profiles: {', '.join(profile_names)}"
+        logger.info(f"Loft '{feature_name}' created from {len(profile_names)} profiles")
+        return f"✓ Loft '{feature_name}' created from {len(profile_names)} profiles: {', '.join(profile_names)}"
 
     def boundary_boss(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -312,7 +326,11 @@ class FeatureTools:
         sel.clear_selection(doc)
         for i, name in enumerate(profiles):
             if not sel.select_sketch(doc, name, mark=1, append=(i > 0)):
-                raise Exception(f"Could not select profile sketch: {name}")
+                available = self._list_available_sketches(doc)
+                raise Exception(
+                    f"Could not select profile sketch: {name}. "
+                    f"Available sketches in feature tree: [{available}]"
+                )
 
         # Select guide curves if provided (mark=2 for direction 2)
         for name in guide_curves:
@@ -327,6 +345,7 @@ class FeatureTools:
                 "Failed to create boundary boss. Ensure profiles are closed sketches on different planes."
             )
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        logger.info(f"Boundary boss created from {len(profiles)} profiles")
-        return f"✓ Boundary boss created from {len(profiles)} profiles"
+        logger.info(f"Boundary boss '{feature_name}' created from {len(profiles)} profiles")
+        return f"✓ Boundary boss '{feature_name}' created from {len(profiles)} profiles"

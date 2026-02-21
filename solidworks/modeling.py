@@ -41,6 +41,12 @@ class ModelingTools:
                             "type": "boolean",
                             "default": False,
                             "description": "Reverse direction"
+                        },
+                        "endCondition": {
+                            "type": "string",
+                            "enum": ["BLIND", "THROUGH_ALL"],
+                            "description": "End condition. BLIND (default): extrude to depth. THROUGH_ALL: through entire body.",
+                            "default": "BLIND"
                         }
                     },
                     "required": ["depth"]
@@ -60,6 +66,12 @@ class ModelingTools:
                             "type": "boolean",
                             "default": False,
                             "description": "Reverse cut direction"
+                        },
+                        "endCondition": {
+                            "type": "string",
+                            "enum": ["BLIND", "THROUGH_ALL"],
+                            "description": "End condition. BLIND (default): cut to depth. THROUGH_ALL: cut through entire body.",
+                            "default": "BLIND"
                         }
                     },
                     "required": ["depth"]
@@ -155,13 +167,15 @@ class ModelingTools:
         # Convert mm to meters
         depth = args["depth"] / 1000.0
         reverse = args.get("reverse", False)
+        end_condition = args.get("endCondition", "BLIND")
+        end_type = {"BLIND": 0, "THROUGH_ALL": 1}.get(end_condition, 0)
 
         # Create extrusion with all 23 required parameters
         feature = doc.FeatureManager.FeatureExtrusion2(
             True,      # Sd (same direction)
             reverse,   # Flip direction
             False,     # Dir
-            0,         # T1 (end condition type - 0 = Blind)
+            end_type,  # T1 (end condition type - 0 = Blind, 1 = Through All)
             0,         # T2
             depth,     # D1 (depth in meters)
             0.0,       # D2
@@ -185,11 +199,12 @@ class ModelingTools:
         
         if not feature:
             raise Exception("Failed to create extrusion")
-        
+
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
-        
-        logger.info(f"Extrusion created: {args['depth']}mm")
-        return f"✓ Extrusion {args['depth']}mm created"
+
+        logger.info(f"Extrusion '{feature_name}' created: {args['depth']}mm ({end_condition})")
+        return f"✓ Extrusion '{feature_name}' {args['depth']}mm created ({end_condition})"
 
     def create_cut_extrusion(self, args: dict, sketching_tools) -> str:
         """Create cut-extrusion (removes material) from current sketch"""
@@ -213,6 +228,8 @@ class ModelingTools:
         # Convert mm to meters
         depth = args["depth"] / 1000.0
         reverse = args.get("reverse", False)
+        end_condition = args.get("endCondition", "BLIND")
+        end_type = {"BLIND": 0, "THROUGH_ALL": 1}.get(end_condition, 0)
 
         # FeatureCut4 parameter names from sldworks.tlb (SW 2025 v33, 27 params):
         # Sd, Flip, Dir, T1, T2, D1, D2, Dchk1, Dchk2, Ddir1, Ddir2, Dang1, Dang2,
@@ -224,7 +241,7 @@ class ModelingTools:
             True,      # Sd
             reverse,   # Flip
             False,     # Dir
-            0,         # T1 (Blind)
+            end_type,  # T1 (0=Blind, 1=Through All)
             0,         # T2
             depth,     # D1
             0.0,       # D2
@@ -253,10 +270,11 @@ class ModelingTools:
         if not feature:
             raise Exception("Failed to create cut-extrusion")
 
+        feature_name = feature.Name
         doc.ViewZoomtofit2()
 
-        logger.info(f"Cut-extrusion created: {args['depth']}mm")
-        return f"✓ Cut-extrusion {args['depth']}mm created"
+        logger.info(f"Cut-extrusion '{feature_name}' created: {args['depth']}mm ({end_condition})")
+        return f"✓ Cut-extrusion '{feature_name}' {args['depth']}mm created ({end_condition})"
 
     def get_mass_properties(self) -> str:
         """Evaluate mass properties of the active part"""

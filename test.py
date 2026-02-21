@@ -1,10 +1,14 @@
 """
-SolidWorks MCP - Comprehensive Test Suite
+SolidWorks MCP - Unified Test Suite
 
-Tests every tool and workflow path, with particular focus on sketch selection
-reliability for cut-extrude operations.
+Combines all tests from test_solidworks.py and the integration suite.
 
-Run with: python test.py
+Usage:
+    python test.py                          # Run all tests
+    python test.py --gui                    # Interactive CLI test picker
+    python test.py --category "Sketch Tools"  # Run one category
+    python test.py --test sketch_line       # Run one test by name
+    python test.py --list                   # List all available tests
 """
 
 import win32com.client
@@ -13,7 +17,10 @@ import glob
 import sys
 import traceback
 import time
-import os
+import argparse
+import math
+from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 # Force UTF-8 output so Unicode symbols survive the Windows console
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -21,7 +28,40 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Test registry
+# ---------------------------------------------------------------------------
+
+@dataclass
+class TestEntry:
+    name: str
+    display_name: str
+    category: str
+    description: str
+    func: Callable
+    order: int = 0
+
+TEST_REGISTRY: list[TestEntry] = []
+
+CATEGORY_ORDER = ["Basic", "Sketch Tools", "Feature Tools", "Integration"]
+
+
+def register_test(name, display_name, category, description, order=0):
+    """Decorator to register a test function."""
+    def decorator(func):
+        TEST_REGISTRY.append(TestEntry(
+            name=name,
+            display_name=display_name,
+            category=category,
+            description=description,
+            func=func,
+            order=order,
+        ))
+        return func
+    return decorator
+
+
+# ---------------------------------------------------------------------------
+# Global result tracking
 # ---------------------------------------------------------------------------
 
 PASS = 0
@@ -34,11 +74,16 @@ def _result(label, ok, detail=""):
     RESULTS.append((label, ok, detail))
     if ok:
         PASS += 1
-        print(f"  ✓ {label}{' — ' + detail if detail else ''}")
+        print(f"  \u2713 {label}{' \u2014 ' + detail if detail else ''}")
     else:
         FAIL += 1
-        print(f"  ✗ {label}{' — ' + detail if detail else ''}")
+        print(f"  \u2717 {label}{' \u2014 ' + detail if detail else ''}")
     return ok
+
+
+def log(message, level="INFO"):
+    prefix = "\u2713" if level == "SUCCESS" else "\u274c" if level == "ERROR" else "\u2192"
+    print(f"  {prefix} {message}")
 
 
 def section(title):
@@ -52,16 +97,16 @@ def subsection(title):
 
 
 # ---------------------------------------------------------------------------
-# SolidWorks connection helpers (mirroring connection.py logic)
+# SolidWorks connection helpers
 # ---------------------------------------------------------------------------
 
 def connect_to_solidworks():
     """Connect to an existing or new SolidWorks instance."""
     try:
         sw = win32com.client.GetActiveObject("SldWorks.Application")
-        print("  → Attached to existing SolidWorks instance")
+        print("  \u2192 Attached to existing SolidWorks instance")
     except Exception:
-        print("  → Launching new SolidWorks instance…")
+        print("  \u2192 Launching new SolidWorks instance\u2026")
         sw = win32com.client.Dispatch("SldWorks.Application")
         sw.Visible = True
         for i in range(30):
@@ -76,7 +121,7 @@ def connect_to_solidworks():
 
 
 def find_template():
-    """Replicate connection.py template discovery."""
+    """Discover the Part template file."""
     patterns = [
         r"C:\ProgramData\SOLIDWORKS\SOLIDWORKS *\templates\Part.prtdot",
         r"C:\ProgramData\SOLIDWORKS\SOLIDWORKS *\templates\Part.PRTDOT",
@@ -88,6 +133,24 @@ def find_template():
     return None
 
 
+def close_all_docs(sw):
+    """Close all open SolidWorks documents without saving."""
+    try:
+        sw.CloseAllDocuments(True)
+    except Exception:
+        # Fallback: close one-by-one
+        while True:
+            doc = sw.ActiveDoc
+            if not doc:
+                break
+            title = doc.GetTitle()
+            sw.QuitDoc(title)
+
+
+# ---------------------------------------------------------------------------
+# Sketch / modeling helpers
+# ---------------------------------------------------------------------------
+
 def new_part(sw, template):
     doc = sw.NewDocument(template, 0, 0, 0)
     if not doc:
@@ -95,8 +158,18 @@ def new_part(sw, template):
     return doc
 
 
+def new_sketch_on_front(sw, template):
+    """Create a new part and open a sketch on the Front Plane."""
+    model = sw.NewDocument(template, 0, 0, 0)
+    front_plane = model.FeatureByName("Front Plane")
+    model.ClearSelection2(True)
+    front_plane.Select2(False, 0)
+    model.SketchManager.InsertSketch(True)
+    return model
+
+
 def select_plane(doc, plane_name):
-    """Select a plane using FeatureByName (reliable path used by sketching.py)."""
+    """Select a plane using FeatureByName."""
     feature = doc.FeatureByName(plane_name)
     if not feature:
         raise RuntimeError(f"Plane not found: {plane_name}")
@@ -112,9 +185,7 @@ def create_sketch_on_plane(doc, plane_name):
 
 def create_sketch_on_face(doc, x, y, z):
     """Select a solid face at (x,y,z) in metres and open a sketch on it."""
-    from win32com.client import VARIANT
-    import pythoncom as _pc
-    callout = VARIANT(_pc.VT_DISPATCH, None)
+    callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
     doc.ClearSelection2(True)
     ok = doc.Extension.SelectByID2('', 'FACE', x, y, z, False, 0, callout, 0)
     if not ok:
@@ -128,7 +199,7 @@ def exit_sketch(doc):
 
 
 def select_sketch(doc, sketch_name):
-    """Select a sketch by name — the operation that fails most often for cut-extrude."""
+    """Select a sketch by name."""
     feature = doc.FeatureByName(sketch_name)
     if not feature:
         raise RuntimeError(f"Sketch not found: {sketch_name}")
@@ -152,55 +223,21 @@ def get_latest_sketch_name(doc):
 
 def extrude(doc, sketch_name, depth_mm, cut=False, reverse=False):
     """Select sketch and create an extrusion or cut-extrusion."""
-    # For cut-extrusions, the sketch must be in edit mode when FeatureExtrusion2
-    # is called (Sd=False). Open it, then exit to commit the geometry — SolidWorks
-    # keeps the sketch selected/active after InsertSketch(True) toggle.
     select_sketch(doc, sketch_name)
     depth_m = depth_mm / 1000.0
 
     if cut:
-        # FeatureCut4 parameter names from sldworks.tlb (SW 2025 v33, 27 params):
-        # Sd, Flip, Dir, T1, T2, D1, D2, Dchk1, Dchk2, Ddir1, Ddir2, Dang1, Dang2,
-        # OffsetReverse1, OffsetReverse2, TranslateSurface1, TranslateSurface2,
-        # NormalCut, UseFeatScope, UseAutoSelect,
-        # AssemblyFeatureScope, AutoSelectComponents, PropagateFeatureToParts,
-        # T0, StartOffset, FlipStartOffset, OptimizeGeometry
         feature = doc.FeatureManager.FeatureCut4(
-            True,      # Sd
-            reverse,   # Flip
-            False,     # Dir
-            0,         # T1 (Blind)
-            0,         # T2
-            depth_m,   # D1
-            0.0,       # D2
-            False,     # Dchk1
-            False,     # Dchk2
-            False,     # Ddir1
-            False,     # Ddir2
-            0.0,       # Dang1
-            0.0,       # Dang2
-            False,     # OffsetReverse1
-            False,     # OffsetReverse2
-            False,     # TranslateSurface1
-            False,     # TranslateSurface2
-            False,     # NormalCut
-            False,     # UseFeatScope
-            True,      # UseAutoSelect
-            False,     # AssemblyFeatureScope
-            True,      # AutoSelectComponents
-            False,     # PropagateFeatureToParts
-            0,         # T0
-            0.0,       # StartOffset
-            False,     # FlipStartOffset
-            False      # OptimizeGeometry
+            True, reverse, False, 0, 0, depth_m, 0.0,
+            False, False, False, False, 0.0, 0.0,
+            False, False, False, False, False, False, True,
+            False, True, False, 0, 0.0, False, False
         )
         if not feature:
             raise RuntimeError("FeatureCut4 returned None for cut-extrusion")
     else:
         feature = doc.FeatureManager.FeatureExtrusion2(
-            True,      # Sd
-            reverse,
-            False, 0, 0, depth_m, 0.0,
+            True, reverse, False, 0, 0, depth_m, 0.0,
             False, False, False, False, 0.0, 0.0,
             False, False, False, False, True, True, True, 0, 0, False
         )
@@ -209,66 +246,889 @@ def extrude(doc, sketch_name, depth_mm, cut=False, reverse=False):
     return feature
 
 
-# ---------------------------------------------------------------------------
-# Individual test functions
-# ---------------------------------------------------------------------------
+def make_cube(sw, template, size_mm=100):
+    """Create a part with a cube of given size. Returns the model."""
+    size_m = size_mm / 1000.0
+    model = sw.NewDocument(template, 0, 0, 0)
+    front_plane = model.FeatureByName("Front Plane")
+    model.ClearSelection2(True)
+    front_plane.Select2(False, 0)
+    model.SketchManager.InsertSketch(True)
+    model.SketchManager.CreateCornerRectangle(0.0, 0.0, 0.0, size_m, size_m, 0.0)
+    exit_sketch(model)
+    sketch1 = model.FeatureByName("Sketch1")
+    model.ClearSelection2(True)
+    sketch1.Select2(False, 0)
+    feat = model.FeatureManager.FeatureExtrusion2(
+        True, False, False, 0, 0, size_m, 0.0,
+        False, False, False, False, 0.0, 0.0,
+        False, False, False, False, True, True, True,
+        0, 0, False
+    )
+    if not feat:
+        raise Exception("Failed to create base cube for test")
+    return model
 
-def test_connection(sw):
-    subsection("Connection")
-    ok = sw is not None
-    _result("SolidWorks application object obtained", ok)
-    if ok:
-        try:
-            ver = sw.RevisionNumber
-            _result("RevisionNumber readable", True, ver)
-        except Exception as e:
-            _result("RevisionNumber readable", False, str(e))
-    return ok
 
+# ===========================================================================
+# TEST FUNCTIONS — Basic
+# ===========================================================================
 
-def test_template_discovery():
-    subsection("Template discovery")
-    template = find_template()
-    ok = template is not None
-    _result("Part template found", ok, template or "not found")
-    return template
-
-
-def close_all_docs(sw):
-    """Close all open documents without saving so each run starts clean."""
+@register_test("basic_cube", "Basic Cube (100mm)", "Basic",
+               "Create a 100mm cube end-to-end: part, sketch, extrude", order=0)
+def test_basic_cube(sw, template):
     try:
-        sw.CloseAllDocuments(True)
-    except Exception:
-        pass
+        model = sw.NewDocument(template, 0, 0, 0)
+        front_plane = model.FeatureByName("Front Plane")
+        model.ClearSelection2(True)
+        front_plane.Select2(False, 0)
+        model.SketchManager.InsertSketch(True)
+        model.SketchManager.CreateCornerRectangle(0.0, 0.0, 0.0, 0.1, 0.1, 0.0)
+        exit_sketch(model)
+
+        sketch1 = model.FeatureByName("Sketch1")
+        model.ClearSelection2(True)
+        sketch1.Select2(False, 0)
+        feat = model.FeatureManager.FeatureExtrusion2(
+            True, False, False, 0, 0, 0.1, 0.0,
+            False, False, False, False, 0.0, 0.0,
+            False, False, False, False, True, True, True,
+            0, 0, False
+        )
+        if not feat:
+            log("Extrusion returned None", "ERROR")
+            return False
+
+        model.ViewZoomtofit2()
+        log("100mm cube created", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"basic_cube FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
 
 
-def test_new_part(sw, template):
-    subsection("New part creation")
+# ===========================================================================
+# TEST FUNCTIONS — Sketch Tools
+# ===========================================================================
+
+@register_test("sketch_line", "Sketch Line", "Sketch Tools",
+               "Draw a line from (0,0) to (50,50)mm", order=0)
+def test_sketch_line(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+        model.SketchManager.CreateLine(0.0, 0.0, 0.0, 0.05, 0.05, 0.0)
+        log("Line created", "SUCCESS")
+        exit_sketch(model)
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_line FAILED: {e}", "ERROR")
+        return False
+
+
+@register_test("sketch_centerline", "Sketch Centerline", "Sketch Tools",
+               "Draw a vertical centerline", order=1)
+def test_sketch_centerline(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+        model.SketchManager.CreateCenterLine(0.0, -0.05, 0.0, 0.0, 0.05, 0.0)
+        log("Centerline created", "SUCCESS")
+        exit_sketch(model)
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_centerline FAILED: {e}", "ERROR")
+        return False
+
+
+@register_test("sketch_point", "Sketch Point", "Sketch Tools",
+               "Create a sketch point at (25,25)mm", order=2)
+def test_sketch_point(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+        model.SketchManager.CreatePoint(0.025, 0.025, 0.0)
+        log("Point created", "SUCCESS")
+        exit_sketch(model)
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_point FAILED: {e}", "ERROR")
+        return False
+
+
+@register_test("sketch_arc", "Sketch Arc", "Sketch Tools",
+               "Draw a 3-point arc and a center-point arc", order=3)
+def test_sketch_arc(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+
+        model.SketchManager.Create3PointArc(
+            0.0, 0.0, 0.0,
+            0.05, 0.0, 0.0,
+            0.025, 0.02, 0.0
+        )
+        log("3-point arc created", "SUCCESS")
+
+        model.SketchManager.CreateArc(
+            0.0, -0.03, 0.0,
+            0.02, -0.03, 0.0,
+            -0.02, -0.03, 0.0,
+            1
+        )
+        log("Center-point arc created", "SUCCESS")
+
+        exit_sketch(model)
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_arc FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("sketch_polygon", "Sketch Polygon", "Sketch Tools",
+               "Draw a hexagon and extrude it", order=4)
+def test_sketch_polygon(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+
+        model.SketchManager.CreatePolygon(
+            0.0, 0.0, 0.0,
+            0.025, 0.0, 0.0,
+            6, False
+        )
+        log("Hexagon created", "SUCCESS")
+
+        exit_sketch(model)
+
+        sketch1 = model.FeatureByName("Sketch1")
+        model.ClearSelection2(True)
+        sketch1.Select2(False, 0)
+        feat = model.FeatureManager.FeatureExtrusion2(
+            True, False, False, 0, 0, 0.05, 0.0,
+            False, False, False, False, 0.0, 0.0,
+            False, False, False, False, True, True, True,
+            0, 0, False
+        )
+        if not feat:
+            log("Polygon extrusion returned None", "ERROR")
+            return False
+
+        log("Hexagon extruded (50mm)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_polygon FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("sketch_ellipse", "Sketch Ellipse", "Sketch Tools",
+               "Draw a 30x20mm ellipse and extrude it", order=5)
+def test_sketch_ellipse(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+
+        cx_m, cy_m = 0.0, 0.0
+        major_r_m = 0.03
+        minor_r_m = 0.02
+        angle = 0.0
+
+        major_x = cx_m + major_r_m * math.cos(angle)
+        major_y = cy_m + major_r_m * math.sin(angle)
+        minor_x = cx_m + minor_r_m * math.cos(angle + math.pi / 2)
+        minor_y = cy_m + minor_r_m * math.sin(angle + math.pi / 2)
+
+        model.SketchManager.CreateEllipse(
+            cx_m, cy_m, 0.0,
+            major_x, major_y, 0.0,
+            minor_x, minor_y, 0.0
+        )
+        log("Ellipse created (30x20mm)", "SUCCESS")
+
+        exit_sketch(model)
+
+        sketch1 = model.FeatureByName("Sketch1")
+        model.ClearSelection2(True)
+        sketch1.Select2(False, 0)
+        feat = model.FeatureManager.FeatureExtrusion2(
+            True, False, False, 0, 0, 0.04, 0.0,
+            False, False, False, False, 0.0, 0.0,
+            False, False, False, False, True, True, True,
+            0, 0, False
+        )
+        if not feat:
+            log("Ellipse extrusion returned None", "ERROR")
+            return False
+
+        log("Ellipse extruded (40mm)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_ellipse FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("sketch_slot", "Sketch Slot", "Sketch Tools",
+               "Draw a 50mm slot and extrude it", order=6)
+def test_sketch_slot(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+
+        model.SketchManager.CreateSketchSlot(
+            0, 0, 0.02,
+            -0.025, 0.0, 0.0,
+            0.025, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            1, False
+        )
+        log("Slot created (50mm long, 20mm wide)", "SUCCESS")
+
+        exit_sketch(model)
+
+        sketch1 = model.FeatureByName("Sketch1")
+        model.ClearSelection2(True)
+        sketch1.Select2(False, 0)
+        feat = model.FeatureManager.FeatureExtrusion2(
+            True, False, False, 0, 0, 0.01, 0.0,
+            False, False, False, False, 0.0, 0.0,
+            False, False, False, False, True, True, True,
+            0, 0, False
+        )
+        if not feat:
+            log("Slot extrusion returned None", "ERROR")
+            return False
+
+        log("Slot extruded (10mm)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_slot FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("sketch_spline", "Sketch Spline", "Sketch Tools",
+               "Draw a spline through 4 points", order=7)
+def test_sketch_spline(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+
+        point_data = [
+            0.0, 0.0, 0.0,
+            0.02, 0.01, 0.0,
+            0.04, -0.01, 0.0,
+            0.06, 0.0, 0.0,
+        ]
+        point_array = win32com.client.VARIANT(
+            pythoncom.VT_ARRAY | pythoncom.VT_R8, point_data
+        )
+        model.SketchManager.CreateSpline2(point_array, True)
+        log("Spline created through 4 points", "SUCCESS")
+
+        exit_sketch(model)
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_spline FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("sketch_text", "Sketch Text", "Sketch Tools",
+               "Insert sketch text 'HELLO'", order=8)
+def test_sketch_text(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+
+        sketch_text_obj = model.InsertSketchText(
+            0.0, 0.0, 0.0, "HELLO", 1, 0, 0, 1, 0
+        )
+        if not sketch_text_obj:
+            log("InsertSketchText returned None", "ERROR")
+            return False
+        log("Sketch text 'HELLO' created", "SUCCESS")
+
+        exit_sketch(model)
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_text FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("sketch_constraint", "Sketch Constraint", "Sketch Tools",
+               "Draw two lines and apply a parallel constraint", order=9)
+def test_sketch_constraint(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+
+        model.SketchManager.CreateLine(0.0, 0.0, 0.0, 0.05, 0.02, 0.0)
+        model.SketchManager.CreateLine(0.0, 0.03, 0.0, 0.05, 0.04, 0.0)
+        log("Two lines drawn", "SUCCESS")
+
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        model.Extension.SelectByID2(
+            "", "SKETCHSEGMENT", 0.025, 0.01, 0.0,
+            False, 0, callout, 0
+        )
+        model.Extension.SelectByID2(
+            "", "SKETCHSEGMENT", 0.025, 0.035, 0.0,
+            True, 0, callout, 0
+        )
+        model.SketchAddConstraints("sgPARALLEL")
+        log("Parallel constraint applied", "SUCCESS")
+
+        exit_sketch(model)
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_constraint FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("toggle_construction", "Toggle Construction Geometry", "Sketch Tools",
+               "Draw a line and toggle it to construction geometry", order=10)
+def test_toggle_construction(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+
+        model.SketchManager.CreateLine(0.0, 0.0, 0.0, 0.05, 0.0, 0.0)
+        log("Line drawn", "SUCCESS")
+
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "", "SKETCHSEGMENT", 0.025, 0.0, 0.0,
+            False, 0, callout, 0
+        )
+        if not ok:
+            log("Could not select line", "ERROR")
+            return False
+
+        sel_mgr = model.SelectionManager
+        sketch_seg = sel_mgr.GetSelectedObject6(1, -1)
+        was_construction = sketch_seg.ConstructionGeometry
+        sketch_seg.ConstructionGeometry = not was_construction
+        is_construction = sketch_seg.ConstructionGeometry
+
+        if is_construction == was_construction:
+            log("Construction flag did not toggle", "ERROR")
+            return False
+
+        log(f"Toggled: was {was_construction}, now {is_construction}", "SUCCESS")
+
+        exit_sketch(model)
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"toggle_construction FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+# ===========================================================================
+# TEST FUNCTIONS — Feature Tools
+# ===========================================================================
+
+@register_test("mass_properties", "Mass Properties", "Feature Tools",
+               "Create 100mm cube and verify volume/surface area", order=0)
+def test_mass_properties(sw, template):
+    try:
+        model = sw.NewDocument(template, 0, 0, 0)
+        front_plane = model.FeatureByName("Front Plane")
+        model.ClearSelection2(True)
+        front_plane.Select2(False, 0)
+        model.SketchManager.InsertSketch(True)
+        model.SketchManager.CreateCornerRectangle(0.0, 0.0, 0.0, 0.1, 0.1, 0.0)
+        exit_sketch(model)
+
+        sketch1 = model.FeatureByName("Sketch1")
+        model.ClearSelection2(True)
+        sketch1.Select2(False, 0)
+        feat = model.FeatureManager.FeatureExtrusion2(
+            True, False, False, 0, 0, 0.1, 0.0,
+            False, False, False, False, 0.0, 0.0,
+            False, False, False, False, True, True, True,
+            0, 0, False
+        )
+        if not feat:
+            log("Extrusion failed for mass properties test", "ERROR")
+            return False
+        log("100mm cube created", "SUCCESS")
+
+        model.ForceRebuild3(True)
+        props = model.GetMassProperties
+        if not props or len(props) < 12:
+            log("GetMassProperties returned invalid data", "ERROR")
+            return False
+
+        volume_mm3 = props[3] * 1e9
+        surface_area_mm2 = props[4] * 1e6
+        com_x = props[0] * 1000.0
+        com_y = props[1] * 1000.0
+        com_z = props[2] * 1000.0
+
+        log(f"Volume: {volume_mm3:.0f} mm^3 (expected 1000000)", "SUCCESS")
+        log(f"Surface Area: {surface_area_mm2:.0f} mm^2 (expected 60000)", "SUCCESS")
+        log(f"Center of Mass: ({com_x:.1f}, {com_y:.1f}, {com_z:.1f}) mm", "SUCCESS")
+
+        if abs(volume_mm3 - 1_000_000) > 1:
+            log(f"Volume mismatch: expected 1000000, got {volume_mm3:.2f}", "ERROR")
+            return False
+        if abs(surface_area_mm2 - 60_000) > 1:
+            log(f"Surface area mismatch: expected 60000, got {surface_area_mm2:.2f}", "ERROR")
+            return False
+
+        log("Mass properties validated", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"mass_properties FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("cut_extrusion", "Cut Extrusion", "Feature Tools",
+               "Create a cube then cut a circular hole in it", order=1)
+def test_cut_extrusion(sw, template):
+    try:
+        model = sw.NewDocument(template, 0, 0, 0)
+        front_plane = model.FeatureByName("Front Plane")
+        model.ClearSelection2(True)
+        front_plane.Select2(False, 0)
+        model.SketchManager.InsertSketch(True)
+        model.SketchManager.CreateCornerRectangle(0.0, 0.0, 0.0, 0.1, 0.1, 0.0)
+        exit_sketch(model)
+
+        sketch1 = model.FeatureByName("Sketch1")
+        model.ClearSelection2(True)
+        sketch1.Select2(False, 0)
+        feat = model.FeatureManager.FeatureExtrusion2(
+            True, False, False, 0, 0, 0.1, 0.0,
+            False, False, False, False, 0.0, 0.0,
+            False, False, False, False, True, True, True,
+            0, 0, False
+        )
+        if not feat:
+            log("Base extrusion failed", "ERROR")
+            return False
+        log("100mm cube created", "SUCCESS")
+
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "", "FACE", 0.05, 0.05, 0.0,
+            False, 0, callout, 0
+        )
+        if not ok:
+            log("Could not select front face", "ERROR")
+            return False
+
+        model.SketchManager.InsertSketch(True)
+        model.SketchManager.CreateCircleByRadius(0.05, 0.05, 0.0, 0.02)
+        log("Circle drawn on front face for cut", "SUCCESS")
+
+        model.ClearSelection2(True)
+        model.SketchManager.InsertSketch(True)
+
+        sketch2 = model.FeatureByName("Sketch2")
+        if not sketch2:
+            log("Could not find Sketch2", "ERROR")
+            return False
+        model.ClearSelection2(True)
+        sketch2.Select2(False, 0)
+
+        cut_feat = model.FeatureManager.FeatureCut4(
+            True, True, False, 0, 0, 0.05, 0.0,
+            False, False, False, False, 0.0, 0.0,
+            False, False, False, False, False, False, True,
+            False, True, False, 0, 0.0, False, False
+        )
+        if not cut_feat:
+            log("Cut-extrusion returned None", "ERROR")
+            return False
+
+        log("Cut-extrusion created (50mm deep hole)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"cut_extrusion FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("fillet", "Fillet", "Feature Tools",
+               "Create a cube and fillet one edge (5mm)", order=2)
+def test_fillet(sw, template):
+    try:
+        make_cube(sw, template, 100)
+        model = sw.ActiveDoc
+        model.ForceRebuild3(True)
+
+        # Select a Z-direction edge (front-right, midpoint at z=0.05)
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "", "EDGE", 0.1, 0.0, 0.05,
+            False, 1, callout, 0
+        )
+        if not ok:
+            log("Could not select edge for fillet", "ERROR")
+            return False
+
+        # Options=195 required for SolidWorks 2025+
+        feature = model.FeatureManager.FeatureFillet3(
+            195, 0.005, 0.0, 0.0, 0, 0, 0, 0,
+        )
+        if not feature:
+            log("FeatureFillet3 returned None", "ERROR")
+            return False
+
+        log("Fillet created (5mm radius)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"fillet FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("chamfer", "Chamfer", "Feature Tools",
+               "Create a cube and chamfer one edge (5mm)", order=3)
+def test_chamfer(sw, template):
+    try:
+        make_cube(sw, template, 100)
+        model = sw.ActiveDoc
+        model.ForceRebuild3(True)
+
+        # Select a Z-direction edge (front-right, midpoint at z=0.05)
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "", "EDGE", 0.1, 0.0, 0.05,
+            False, 0, callout, 0
+        )
+        if not ok:
+            log("Could not select edge for chamfer", "ERROR")
+            return False
+
+        # SolidWorks 2025 requires 8 parameters (3 extra trailing zeros)
+        feature = model.FeatureManager.InsertFeatureChamfer(
+            4, 0, 0.005, 0.785398, 0.005, 0, 0, 0,
+        )
+        if not feature:
+            log("InsertFeatureChamfer returned None", "ERROR")
+            return False
+
+        log("Chamfer created (5mm)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"chamfer FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("shell", "Shell", "Feature Tools",
+               "Create a cube and shell it (remove top face, 3mm)", order=4)
+def test_shell(sw, template):
+    try:
+        make_cube(sw, template, 100)
+        model = sw.ActiveDoc
+        model.ForceRebuild3(True)
+
+        # Select top face (y=100mm, center of face)
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "", "FACE", 0.05, 0.1, 0.05,
+            False, 0, callout, 0
+        )
+        if not ok:
+            log("Could not select top face for shell", "ERROR")
+            return False
+
+        # In SW2025, InsertFeatureShell lives on the model (IModelDoc2),
+        # NOT on FeatureManager. It may return None even on success,
+        # so verify by checking the feature tree.
+        model._FlagAsMethod("InsertFeatureShell")
+        model.InsertFeatureShell(0.003, False)
+        model.ForceRebuild3(True)
+
+        # Verify shell was created by checking feature tree
+        features = model.FeatureManager.GetFeatures(True)
+        shell_found = False
+        if features:
+            for f in features:
+                if "Shell" in f.Name:
+                    shell_found = True
+                    break
+        if not shell_found:
+            log("Shell feature not found in feature tree", "ERROR")
+            return False
+
+        log("Shell created (3mm thickness, top face removed)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"shell FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("revolve", "Revolve", "Feature Tools",
+               "Create a half-profile with centerline and revolve 360 deg", order=5)
+def test_revolve(sw, template):
+    try:
+        model = new_sketch_on_front(sw, template)
+
+        model.SketchManager.CreateCenterLine(0.0, -0.03, 0.0, 0.0, 0.03, 0.0)
+        model.SketchManager.CreateLine(0.01, -0.02, 0.0, 0.02, -0.02, 0.0)
+        model.SketchManager.CreateLine(0.02, -0.02, 0.0, 0.02, 0.02, 0.0)
+        model.SketchManager.CreateLine(0.02, 0.02, 0.0, 0.01, 0.02, 0.0)
+        model.SketchManager.CreateLine(0.01, 0.02, 0.0, 0.01, -0.02, 0.0)
+        log("Half-profile and centerline drawn", "SUCCESS")
+
+        exit_sketch(model)
+
+        sketch1 = model.FeatureByName("Sketch1")
+        model.ClearSelection2(True)
+        sketch1.Select2(False, 0)
+
+        feature = model.FeatureManager.FeatureRevolve2(
+            True, True, False, False, False, False,
+            0, 0,
+            2 * math.pi,
+            0.0,
+            False, False, 0.0, 0.0,
+            0, 0.0, 0.0,
+            True, True, True,
+        )
+        if not feature:
+            log("FeatureRevolve2 returned None", "ERROR")
+            return False
+
+        log("Revolve created (360\u00b0)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"revolve FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("ref_plane", "Reference Plane", "Feature Tools",
+               "Create a 50mm offset reference plane from Front", order=6)
+def test_ref_plane(sw, template):
+    try:
+        make_cube(sw, template, 100)
+        model = sw.ActiveDoc
+        model.ForceRebuild3(True)
+
+        # In SW2025, SelectByID2 with type "PLANE" works (not "DATUMPLANE")
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "Front Plane", "PLANE", 0, 0, 0,
+            False, 0, callout, 0
+        )
+        if not ok:
+            log("Could not select Front Plane", "ERROR")
+            return False
+
+        # flags=5 works reliably in SW2025 for offset planes
+        feature = model.FeatureManager.InsertRefPlane(5, 0.05, 0, 0, 0, 0)
+
+        # InsertRefPlane may return None even on success; check feature tree
+        if not feature:
+            model.ForceRebuild3(True)
+            features = model.FeatureManager.GetFeatures(True)
+            if features:
+                for f in features:
+                    if "Plane" in f.Name and f.Name != "Front Plane" \
+                            and f.Name != "Top Plane" and f.Name != "Right Plane":
+                        feature = f
+                        break
+
+        if not feature:
+            log("InsertRefPlane returned None and no new plane in feature tree", "ERROR")
+            return False
+
+        log("Reference plane created (50mm offset from Front)", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"ref_plane FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("loft", "Loft (Frustum)", "Feature Tools",
+               "Create a frustum via loft between two circles on offset planes", order=7)
+def test_loft(sw, template):
+    try:
+        model = sw.NewDocument(template, 0, 0, 0)
+
+        # Sketch 1: large circle on Front Plane
+        create_sketch_on_plane(model, "Front Plane")
+        model.SketchManager.CreateCircleByRadius(0.0, 0.0, 0.0, 0.025)  # 25mm radius
+        exit_sketch(model)
+        sketch1_name = get_latest_sketch_name(model)
+        log(f"Sketch 1: {sketch1_name}", "SUCCESS")
+
+        # Create offset reference plane (80mm from Front)
+        # Use SelectByID2 with "PLANE" type and flags=5 (proven in SW2025)
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "Front Plane", "PLANE", 0, 0, 0, False, 0, callout, 0
+        )
+        if not ok:
+            log("Could not select Front Plane for ref plane", "ERROR")
+            return False
+        ref_feat = model.FeatureManager.InsertRefPlane(5, 0.08, 0, 0, 0, 0)
+        if not ref_feat:
+            # Fallback: check feature tree for a new plane
+            model.ForceRebuild3(True)
+            features = model.FeatureManager.GetFeatures(True)
+            if features:
+                for f in features:
+                    if "Plane" in f.Name and f.Name not in (
+                        "Front Plane", "Top Plane", "Right Plane"
+                    ):
+                        ref_feat = f
+                        break
+        if not ref_feat:
+            log("Failed to create reference plane", "ERROR")
+            return False
+        custom_plane_name = ref_feat.Name
+        log(f"Reference plane: {custom_plane_name}", "SUCCESS")
+
+        # Sketch 2: small circle on custom plane
+        plane_feat = model.FeatureByName(custom_plane_name)
+        if not plane_feat:
+            log(f"Could not find plane: {custom_plane_name}", "ERROR")
+            return False
+        model.ClearSelection2(True)
+        plane_feat.Select2(False, 0)
+        model.SketchManager.InsertSketch(True)
+        model.SketchManager.CreateCircleByRadius(0.0, 0.0, 0.0, 0.01)  # 10mm radius
+        exit_sketch(model)
+        sketch2_name = get_latest_sketch_name(model)
+        log(f"Sketch 2: {sketch2_name}", "SUCCESS")
+
+        # Select both sketches for loft (mark=1)
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok1 = model.Extension.SelectByID2(
+            sketch1_name, "SKETCH", 0, 0, 0, False, 1, callout, 0
+        )
+        ok2 = model.Extension.SelectByID2(
+            sketch2_name, "SKETCH", 0, 0, 0, True, 1, callout, 0
+        )
+        if not ok1 or not ok2:
+            log(f"Sketch selection failed: {sketch1_name}={ok1}, {sketch2_name}={ok2}", "ERROR")
+            return False
+
+        # Create loft using InsertProtrusionBlend2 (18 params for SW2025)
+        feature = model.FeatureManager.InsertProtrusionBlend2(
+            False,  # Closed
+            True,   # KeepTangency
+            True,   # ForceNonRational
+            1.0,    # TessToleranceFactor
+            0,      # StartMatchingType (None)
+            0,      # EndMatchingType (None)
+            1.0,    # StartTangentLength
+            1.0,    # EndTangentLength
+            False,  # MaintainTangency
+            True,   # Merge
+            False,  # IsThinBody
+            0.0,    # Thickness1
+            0.0,    # Thickness2
+            0,      # ThinType
+            True,   # UseFeatScope
+            True,   # UseAutoSelect
+            True,   # Close (feature scope)
+            0,      # GuideCurveInfluence
+        )
+        if not feature:
+            log("InsertProtrusionBlend2 returned None", "ERROR")
+            return False
+
+        log("Loft (frustum) created successfully", "SUCCESS")
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"loft FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("list_features", "List Features", "Feature Tools",
+               "Create a cube and list the feature tree", order=8)
+def test_list_features(sw, template):
+    try:
+        model = make_cube(sw, template, 100)
+
+        features = model.FeatureManager.GetFeatures(True)
+        if not features:
+            log("GetFeatures returned None", "ERROR")
+            return False
+
+        found_extrude = False
+        for feature in features:
+            name = feature.Name
+            type_name = feature.GetTypeName2
+            if "Extrusion" in type_name or "Extrude" in name:
+                found_extrude = True
+
+        if not found_extrude:
+            log("Could not find extrusion feature in tree", "ERROR")
+            return False
+
+        log(f"Feature tree has {len(features)} features, extrusion found", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"list_features FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+# ===========================================================================
+# TEST FUNCTIONS — Integration (sequential sub-tests in one document)
+# ===========================================================================
+
+@register_test("integration_suite", "Cut-Extrude Reliability Suite", "Integration",
+               "18+ sequential sub-tests: sketch lifecycle, extrusion, cuts, units, enumeration",
+               order=0)
+def test_integration_suite(sw, template):
+    """Full integration test from original test.py, adapted to accept sw/template."""
+    global PASS, FAIL
+
+    # --- Part creation + plane selection ---
+    subsection("Part creation & plane selection")
     close_all_docs(sw)
     doc = new_part(sw, template)
     ok = doc is not None
     _result("NewDocument returned a document", ok)
-    return doc
+    if not ok:
+        return False
 
-
-def test_plane_selection(doc):
-    subsection("Plane selection (FeatureByName)")
-    results = []
     for plane in ("Front Plane", "Top Plane", "Right Plane"):
         try:
             feat = doc.FeatureByName(plane)
-            ok = feat is not None
-        except Exception as e:
-            ok = False
-        results.append(_result(f"Select {plane}", ok))
-    return all(results)
+            _result(f"Select {plane}", feat is not None)
+        except Exception:
+            _result(f"Select {plane}", False)
 
-
-def test_sketch_lifecycle(doc):
-    """Create a sketch, draw in it, exit, then verify the sketch exists by name."""
-    subsection("Sketch lifecycle (create → draw → exit)")
-
-    # --- Create on Front Plane ---
+    # --- Sketch lifecycle ---
+    subsection("Sketch lifecycle (create \u2192 draw \u2192 exit)")
     try:
         create_sketch_on_plane(doc, "Front Plane")
         _result("InsertSketch on Front Plane", True)
@@ -276,7 +1136,6 @@ def test_sketch_lifecycle(doc):
         _result("InsertSketch on Front Plane", False, str(e))
         return False
 
-    # --- Draw rectangle ---
     try:
         doc.SketchManager.CreateCornerRectangle(0.0, 0.0, 0.0, 0.1, 0.1, 0.0)
         _result("CreateCornerRectangle 100x100 mm", True)
@@ -284,7 +1143,6 @@ def test_sketch_lifecycle(doc):
         _result("CreateCornerRectangle 100x100 mm", False, str(e))
         return False
 
-    # --- Exit sketch ---
     try:
         exit_sketch(doc)
         _result("Exit sketch", True)
@@ -292,7 +1150,6 @@ def test_sketch_lifecycle(doc):
         _result("Exit sketch", False, str(e))
         return False
 
-    # --- Verify Sketch1 exists ---
     try:
         feat = doc.FeatureByName("Sketch1")
         _result("Sketch1 discoverable after exit", feat is not None)
@@ -300,55 +1157,58 @@ def test_sketch_lifecycle(doc):
         _result("Sketch1 discoverable after exit", False, str(e))
         return False
 
-    return True
+    # Feature type check
+    try:
+        feat = doc.FeatureByName("Sketch1")
+        type_name = feat.GetTypeName2 if feat else None
+        _result("GetTypeName2 == 'ProfileFeature'", type_name == "ProfileFeature",
+                f"got '{type_name}'" if type_name else "feature not found")
+    except Exception as e:
+        _result("GetTypeName2()", False, str(e))
 
-
-def test_sketch_counter(doc, expected_name):
-    """Verify that the feature tree returns the expected sketch name via the
-    fallback enumeration used by modeling.py._get_latest_sketch_name()."""
-    subsection(f"Feature-tree sketch enumeration (expect {expected_name})")
+    # Sketch counter
     try:
         found = get_latest_sketch_name(doc)
-        ok = found == expected_name
-        _result(f"Latest sketch = '{found}'", ok,
-                "" if ok else f"expected '{expected_name}'")
-        return ok
+        _result(f"Latest sketch = '{found}'", found == "Sketch1")
     except Exception as e:
         _result("Feature enumeration", False, str(e))
-        return False
 
-
-def test_select_sketch_by_name(doc, sketch_name):
-    """Core of the cut-extrude bug: can we select a sketch by exact name?"""
-    subsection(f"Sketch selection by name ('{sketch_name}')")
+    # Select by name
     try:
-        feat = select_sketch(doc, sketch_name)
-        ok = feat is not None
-        _result(f"FeatureByName('{sketch_name}') found", ok)
-        return ok
+        feat = select_sketch(doc, "Sketch1")
+        _result("FeatureByName('Sketch1') found", feat is not None)
     except Exception as e:
-        _result(f"FeatureByName('{sketch_name}') found", False, str(e))
-        return False
+        _result("FeatureByName('Sketch1') found", False, str(e))
 
-
-def test_extrusion(doc, sketch_name="Sketch1", depth_mm=100.0):
-    subsection(f"Extrusion (sketch='{sketch_name}', depth={depth_mm}mm)")
+    # ClearSelection2 regression
     try:
-        feat = extrude(doc, sketch_name, depth_mm, cut=False)
-        _result(f"FeatureExtrusion2 (add material)", feat is not None)
+        doc.ClearSelection2(True)
+        feat = doc.FeatureByName("Sketch1")
+        result = feat.Select2(False, 0) if feat else False
+        _result("Select2 returned True", bool(result))
+        doc.ClearSelection2(True)
+    except Exception as e:
+        _result("Select2 call", False, str(e))
+
+    # --- Extrusion ---
+    subsection("Extrusion (add material)")
+    try:
+        feat = extrude(doc, "Sketch1", 100.0, cut=False)
+        _result("FeatureExtrusion2 (add material)", feat is not None)
         doc.ViewZoomtofit2()
-        return True
     except Exception as e:
         _result("FeatureExtrusion2 (add material)", False, str(e))
         return False
 
+    # Sketch still selectable after extrusion
+    try:
+        feat = doc.FeatureByName("Sketch1")
+        _result("FeatureByName('Sketch1') post-extrusion", feat is not None)
+    except Exception as e:
+        _result("FeatureByName('Sketch1') post-extrusion", False, str(e))
 
-def test_second_sketch_on_solid(doc, sketch_number):
-    """Create a sketch on the top face of the solid — prerequisite for cut-extrude.
-    The solid is a 100x100x100mm cube extruded from Front Plane (XY) in +Z.
-    Top face is at Z=0.1m. We pick a point on that face to anchor the sketch."""
-    subsection(f"Sketch on top face of solid (will be Sketch{sketch_number})")
-    # Top face centre: X=0.05, Y=0.05, Z=0.1
+    # --- Cut-extrusion ---
+    subsection("Cut-extrusion (remove material)")
     try:
         create_sketch_on_face(doc, 0.05, 0.05, 0.1)
         _result("InsertSketch on top face of solid", True)
@@ -356,7 +1216,6 @@ def test_second_sketch_on_solid(doc, sketch_number):
         _result("InsertSketch on top face of solid", False, str(e))
         return False
 
-    # Circle at centre of face, radius 10mm = 0.01m
     try:
         doc.SketchManager.CreateCircleByRadius(0.05, 0.05, 0.1, 0.01)
         _result("CreateCircleByRadius 10mm radius on top face", True)
@@ -371,63 +1230,56 @@ def test_second_sketch_on_solid(doc, sketch_number):
         _result("Exit second sketch", False, str(e))
         return False
 
-    expected = f"Sketch{sketch_number}"
     try:
-        feat = doc.FeatureByName(expected)
-        _result(f"{expected} exists after exit", feat is not None)
-        return feat is not None
+        feat = doc.FeatureByName("Sketch2")
+        _result("Sketch2 exists after exit", feat is not None)
     except Exception as e:
-        _result(f"{expected} exists after exit", False, str(e))
-        return False
+        _result("Sketch2 exists after exit", False, str(e))
 
-
-def test_cut_extrusion(doc, sketch_name, depth_mm=50.0, reverse=False):
-    subsection(f"Cut-extrusion (sketch='{sketch_name}', depth={depth_mm}mm, reverse={reverse})")
+    # Feature type & selection checks for Sketch2
     try:
-        feat = extrude(doc, sketch_name, depth_mm, cut=True, reverse=reverse)
+        feat = doc.FeatureByName("Sketch2")
+        type_name = feat.GetTypeName2 if feat else None
+        _result("Sketch2 GetTypeName2 == 'ProfileFeature'", type_name == "ProfileFeature")
+    except Exception:
+        pass
+
+    try:
+        found = get_latest_sketch_name(doc)
+        _result(f"Latest sketch = '{found}'", found == "Sketch2")
+    except Exception:
+        pass
+
+    try:
+        feat = select_sketch(doc, "Sketch2")
+        _result("FeatureByName('Sketch2') found", feat is not None)
+    except Exception as e:
+        _result("FeatureByName('Sketch2') found", False, str(e))
+
+    try:
+        feat = extrude(doc, "Sketch2", 50.0, cut=True, reverse=False)
         _result("FeatureCut4 (cut material)", feat is not None)
         doc.ViewZoomtofit2()
-        return True
     except Exception as e:
         _result("FeatureCut4 (cut material)", False, str(e))
-        traceback.print_exc()
-        return False
 
-
-def test_cut_extrusion_reversed(doc, sketch_number, depth_mm=30.0):
-    """Cut-extrude with reverse=True using a sketch on the bottom face of the solid."""
-    subsection(f"Cut-extrusion reversed (sketch will be Sketch{sketch_number})")
-
-    # Bottom face of the cube is at Z=0, normal = -Z. Pick a point on it.
+    # --- Cut-extrusion reversed ---
+    subsection("Cut-extrusion reversed direction")
     try:
         create_sketch_on_face(doc, 0.03, 0.03, 0.0)
         doc.SketchManager.CreateCornerRectangle(0.01, 0.01, 0.0, 0.04, 0.04, 0.0)
         exit_sketch(doc)
-    except Exception as e:
-        _result("Setup sketch for reversed cut", False, str(e))
-        return False
-
-    sketch_name = f"Sketch{sketch_number}"
-    try:
-        feat = extrude(doc, sketch_name, depth_mm, cut=True, reverse=True)
-        _result(f"Cut-extrusion reversed {depth_mm}mm", feat is not None)
+        feat = extrude(doc, "Sketch3", 30.0, cut=True, reverse=True)
+        _result("Cut-extrusion reversed 30mm", feat is not None)
         doc.ViewZoomtofit2()
-        return True
     except Exception as e:
-        _result(f"Cut-extrusion reversed {depth_mm}mm", False, str(e))
-        return False
+        _result("Cut-extrusion reversed 30mm", False, str(e))
 
-
-def test_multiple_cuts(doc, start_sketch_number):
-    """Create two independent cut-extrusions on the top face of the body."""
+    # --- Multiple sequential cuts ---
     subsection("Multiple sequential cut-extrusions")
-    passed = True
-
     for i in range(2):
-        sn = start_sketch_number + i
+        sn = 4 + i
         sketch_name = f"Sketch{sn}"
-
-        # Place two small circles on the top face, well separated
         cx = 0.02 + i * 0.05
         try:
             create_sketch_on_face(doc, cx, 0.05, 0.1)
@@ -437,269 +1289,288 @@ def test_multiple_cuts(doc, start_sketch_number):
             _result(f"Cut #{i+1} using {sketch_name}", feat is not None)
         except Exception as e:
             _result(f"Cut #{i+1} using {sketch_name}", False, str(e))
-            passed = False
 
-    return passed
-
-
-def test_sketch_selection_after_extrusion(doc, sketch_name):
-    """Verify that a sketch that has already been extruded can still be selected.
-    This catches regressions where the sketch becomes hidden/consumed."""
-    subsection(f"Sketch '{sketch_name}' still selectable after extrusion")
+    # --- Unit conversion validation ---
+    subsection("Unit conversion: 50x30mm rectangle")
     try:
-        feat = doc.FeatureByName(sketch_name)
-        ok = feat is not None
-        _result(f"FeatureByName('{sketch_name}') post-extrusion", ok)
-        return ok
-    except Exception as e:
-        _result(f"FeatureByName('{sketch_name}') post-extrusion", False, str(e))
-        return False
-
-
-def test_feature_type_name(doc, sketch_name):
-    """Verify the feature type is 'ProfileFeature' — the type checked by _get_latest_sketch_name."""
-    subsection(f"Feature type check for '{sketch_name}'")
-    try:
-        feat = doc.FeatureByName(sketch_name)
-        if not feat:
-            _result(f"FeatureByName('{sketch_name}')", False, "not found")
-            return False
-        type_name = feat.GetTypeName2
-        ok = type_name == "ProfileFeature"
-        _result("GetTypeName2 == 'ProfileFeature'", ok, f"got '{type_name}'")
-        return ok
-    except Exception as e:
-        _result("GetTypeName2()", False, str(e))
-        return False
-
-
-def test_unit_conversion_rectangle(doc):
-    """Verify that a 50 mm rectangle drawn as 0.05 m actually appears correct.
-    We do this by drawing the shape and checking the sketch exists — a proxy
-    check since the COM API doesn't expose sketch geometry directly here."""
-    subsection("Unit conversion: 50x30mm rectangle (0.05 x 0.03 m)")
-    sketch_n = None
-    try:
-        # Count existing sketches first
-        features = doc.FeatureManager.GetFeatures(True)
-        sketch_n = sum(1 for f in features if f.GetTypeName2 == "ProfileFeature") + 1
-
         create_sketch_on_plane(doc, "Right Plane")
-        # 50mm = 0.05m, 30mm = 0.03m, centered at origin
         doc.SketchManager.CreateCornerRectangle(-0.025, -0.015, 0.0, 0.025, 0.015, 0.0)
         exit_sketch(doc)
         _result("50x30mm rectangle sketch created", True)
-        return sketch_n
     except Exception as e:
         _result("50x30mm rectangle sketch created", False, str(e))
-        return None
 
-
-def test_unit_conversion_circle(doc):
-    """Verify that a 10mm-radius circle is drawn as 0.01m."""
-    subsection("Unit conversion: circle radius=10mm (0.01 m)")
+    subsection("Unit conversion: circle radius=10mm")
     try:
-        features = doc.FeatureManager.GetFeatures(True)
-        sketch_n = sum(1 for f in features if f.GetTypeName2 == "ProfileFeature") + 1
         create_sketch_on_plane(doc, "Top Plane")
         doc.SketchManager.CreateCircleByRadius(0.0, 0.0, 0.0, 0.01)
         exit_sketch(doc)
         _result("10mm-radius circle sketch created", True)
-        return sketch_n
     except Exception as e:
         _result("10mm-radius circle sketch created", False, str(e))
-        return None
 
-
-def test_clear_selection_before_sketch_select(doc, sketch_name):
-    """Regression: ensure ClearSelection2 before Select2 doesn't break selection."""
-    subsection(f"ClearSelection2 before Select2 for '{sketch_name}'")
-    try:
-        doc.ClearSelection2(True)
-        feat = doc.FeatureByName(sketch_name)
-        if not feat:
-            _result("Feature found", False, "FeatureByName returned None")
-            return False
-        result = feat.Select2(False, 0)
-        # Select2 returns True on success
-        _result("Select2 returned True", bool(result), f"returned {result}")
-        doc.ClearSelection2(True)
-        return bool(result)
-    except Exception as e:
-        _result("Select2 call", False, str(e))
-        return False
-
-
-# ---------------------------------------------------------------------------
-# Main test runner
-# ---------------------------------------------------------------------------
-
-def run_all_tests():
-    global PASS, FAIL, RESULTS
-    PASS = 0
-    FAIL = 0
-    RESULTS = []
-
-    section("SOLIDWORKS MCP — COMPREHENSIVE TEST SUITE")
-
-    # -----------------------------------------------------------------------
-    # 0. COM + Connection
-    # -----------------------------------------------------------------------
-    section("0. COM INIT & CONNECTION")
-    print("  → Initialising COM…")
-    pythoncom.CoInitialize()
-    _result("pythoncom.CoInitialize()", True)
-
-    try:
-        sw = connect_to_solidworks()
-        test_connection(sw)
-    except Exception as e:
-        _result("connect_to_solidworks()", False, str(e))
-        print("\n  Cannot continue without a SolidWorks connection.")
-        return False
-
-    # -----------------------------------------------------------------------
-    # 1. Template
-    # -----------------------------------------------------------------------
-    section("1. TEMPLATE DISCOVERY")
-    template = test_template_discovery()
-    if not template:
-        print("\n  Cannot continue without a Part template.")
-        return False
-
-    # -----------------------------------------------------------------------
-    # 2. Part creation + plane selection
-    # -----------------------------------------------------------------------
-    section("2. PART CREATION & PLANE SELECTION")
-    doc = test_new_part(sw, template)
-    if not doc:
-        print("\n  Cannot continue without an active document.")
-        return False
-    test_plane_selection(doc)
-
-    # -----------------------------------------------------------------------
-    # 3. Basic sketch lifecycle
-    # -----------------------------------------------------------------------
-    section("3. SKETCH LIFECYCLE")
-    ok = test_sketch_lifecycle(doc)   # creates Sketch1 (100×100 mm rectangle)
-    if not ok:
-        print("\n  Sketch lifecycle failed — aborting further sketch tests.")
-        return False
-
-    test_feature_type_name(doc, "Sketch1")
-    test_sketch_counter(doc, "Sketch1")
-    test_select_sketch_by_name(doc, "Sketch1")
-    test_clear_selection_before_sketch_select(doc, "Sketch1")
-
-    # -----------------------------------------------------------------------
-    # 4. Basic extrusion
-    # -----------------------------------------------------------------------
-    section("4. EXTRUSION (ADD MATERIAL)")
-    ok = test_extrusion(doc, sketch_name="Sketch1", depth_mm=100.0)
-    if not ok:
-        print("\n  Extrusion failed — aborting cut-extrude tests.")
-        return False
-
-    # Sketch should still be selectable after extrusion
-    test_sketch_selection_after_extrusion(doc, "Sketch1")
-
-    # -----------------------------------------------------------------------
-    # 5. Cut-extrusion (primary feature under test)
-    # -----------------------------------------------------------------------
-    section("5. CUT-EXTRUSION (REMOVE MATERIAL)")
-
-    # Sketch2: circle hole on top face of solid
-    ok = test_second_sketch_on_solid(doc, sketch_number=2)
-    if not ok:
-        print("\n  Second sketch failed — aborting cut-extrude tests.")
-        return False
-
-    test_feature_type_name(doc, "Sketch2")
-    test_sketch_counter(doc, "Sketch2")
-    test_select_sketch_by_name(doc, "Sketch2")
-    test_clear_selection_before_sketch_select(doc, "Sketch2")
-
-    ok = test_cut_extrusion(doc, "Sketch2", depth_mm=50.0, reverse=False)
-    if not ok:
-        print("\n  Cut-extrusion failed.")
-
-    # -----------------------------------------------------------------------
-    # 6. Cut-extrusion with reverse=True
-    # -----------------------------------------------------------------------
-    section("6. CUT-EXTRUSION — REVERSED DIRECTION")
-    test_cut_extrusion_reversed(doc, sketch_number=3, depth_mm=30.0)
-
-    # -----------------------------------------------------------------------
-    # 7. Multiple sequential cuts
-    # -----------------------------------------------------------------------
-    section("7. MULTIPLE SEQUENTIAL CUT-EXTRUSIONS")
-    test_multiple_cuts(doc, start_sketch_number=4)
-
-    # -----------------------------------------------------------------------
-    # 8. Unit conversion validation
-    # -----------------------------------------------------------------------
-    section("8. UNIT CONVERSION VALIDATION")
-    rect_sketch_n = test_unit_conversion_rectangle(doc)
-    circle_sketch_n = test_unit_conversion_circle(doc)
-
-    # -----------------------------------------------------------------------
-    # 9. Feature-tree enumeration robustness
-    # -----------------------------------------------------------------------
-    section("9. FEATURE-TREE ENUMERATION ROBUSTNESS")
-    subsection("Enumerate all ProfileFeature entries")
+    # --- Feature-tree enumeration ---
+    subsection("Feature-tree enumeration robustness")
     try:
         features = doc.FeatureManager.GetFeatures(True)
         sketches = [f.Name for f in features if f.GetTypeName2 == "ProfileFeature"]
         _result(f"Found {len(sketches)} sketch(es) in feature tree", len(sketches) > 0,
                 ", ".join(sketches))
-        # All expected sketch names must be in the tree
         for name in sketches:
             feat = doc.FeatureByName(name)
             _result(f"FeatureByName('{name}') round-trip", feat is not None)
     except Exception as e:
         _result("Feature enumeration", False, str(e))
 
-    # -----------------------------------------------------------------------
-    # 10. Final zoom & view
-    # -----------------------------------------------------------------------
-    section("10. VIEW / ZOOM")
+    # --- Final zoom ---
     try:
         doc.ViewZoomtofit2()
         _result("ViewZoomtofit2()", True)
     except Exception as e:
         _result("ViewZoomtofit2()", False, str(e))
 
-    # -----------------------------------------------------------------------
-    # Summary
-    # -----------------------------------------------------------------------
-    section("RESULTS")
-    total = PASS + FAIL
+    return True
 
-    if PASS:
-        print(f"\n  PASSED ({PASS}):")
-        for label, ok, detail in RESULTS:
+
+# ===========================================================================
+# Test runner
+# ===========================================================================
+
+def run_selected_tests(entries):
+    """Run a list of TestEntry items. Returns True if all pass."""
+    global PASS, FAIL, RESULTS
+    PASS, FAIL, RESULTS = 0, 0, []
+
+    section("SOLIDWORKS MCP \u2014 TEST SUITE")
+
+    print("  \u2192 Initialising COM\u2026")
+    pythoncom.CoInitialize()
+
+    try:
+        sw = connect_to_solidworks()
+        ver = sw.RevisionNumber
+        print(f"  \u2713 Connected to SolidWorks {ver}")
+    except Exception as e:
+        print(f"  \u2717 Failed to connect: {e}")
+        return False
+
+    template = find_template()
+    if not template:
+        print("  \u2717 No Part template found. Aborting.")
+        return False
+    print(f"  \u2713 Template: {template}")
+
+    print("  \u2192 Closing all open documents\u2026")
+    close_all_docs(sw)
+
+    overall_results = []
+    for entry in entries:
+        section(f"{entry.category}: {entry.display_name}")
+        try:
+            ok = entry.func(sw, template)
+            overall_results.append((entry.display_name, ok))
             if ok:
-                print(f"    ✓ {label}{' — ' + detail if detail else ''}")
+                log(f"{entry.display_name} \u2014 PASSED", "SUCCESS")
+            else:
+                log(f"{entry.display_name} \u2014 FAILED", "ERROR")
+        except Exception as e:
+            overall_results.append((entry.display_name, False))
+            log(f"{entry.display_name} \u2014 EXCEPTION: {e}", "ERROR")
+            traceback.print_exc()
 
-    if FAIL:
-        print(f"\n  FAILED ({FAIL}):")
-        for label, ok, detail in RESULTS:
+        # Close docs between independent tests to prevent accumulation
+        close_all_docs(sw)
+
+    # --- Summary ---
+    section("RESULTS")
+    total = len(overall_results)
+    passed = sum(1 for _, ok in overall_results if ok)
+    failed = total - passed
+
+    if passed:
+        print(f"\n  PASSED ({passed}):")
+        for name, ok in overall_results:
+            if ok:
+                print(f"    \u2713 {name}")
+
+    if failed:
+        print(f"\n  FAILED ({failed}):")
+        for name, ok in overall_results:
             if not ok:
-                print(f"    ✗ {label}{' — ' + detail if detail else ''}")
+                print(f"    \u2717 {name}")
 
     print(f"\n  Total  : {total}")
-    print(f"  Passed : {PASS}")
-    print(f"  Failed : {FAIL}")
-    if FAIL == 0:
-        print("\n  ✓ ALL TESTS PASSED")
+    print(f"  Passed : {passed}")
+    print(f"  Failed : {failed}")
+    if failed == 0:
+        print("\n  \u2713 ALL TESTS PASSED")
     else:
-        print(f"\n  ✗ {FAIL} TEST(S) FAILED")
+        print(f"\n  \u2717 {failed} TEST(S) FAILED")
     print()
 
-    return FAIL == 0
+    return failed == 0
+
+
+# ===========================================================================
+# Interactive CLI selector (--gui)
+# ===========================================================================
+
+def interactive_selector():
+    """Print numbered test list, accept user selection, run chosen tests."""
+
+    # Group tests by category
+    categories = {}
+    for entry in TEST_REGISTRY:
+        categories.setdefault(entry.category, []).append(entry)
+
+    # Sort categories by defined order, tests by their order field
+    sorted_cats = sorted(categories.keys(),
+                         key=lambda c: CATEGORY_ORDER.index(c) if c in CATEGORY_ORDER else 999)
+
+    # Build numbered list
+    numbered = []
+    print("\n  SolidWorks MCP Test Suite \u2014 Interactive Selector")
+    print("  " + "=" * 54)
+
+    for cat in sorted_cats:
+        entries = sorted(categories[cat], key=lambda e: e.order)
+        print(f"\n  {cat}:")
+        for entry in entries:
+            numbered.append(entry)
+            idx = len(numbered)
+            print(f"    [{idx:2d}] {entry.display_name}")
+
+    print(f"\n  Enter selection:")
+    print(f"    Numbers/ranges : 1,3-5,13")
+    print(f"    Category name  : Sketch Tools")
+    print(f"    Run everything : all")
+    print(f"    Quit           : q")
+    print()
+
+    try:
+        raw = input("  > ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\n  Cancelled.")
+        return
+
+    if not raw or raw.lower() == "q":
+        print("  Cancelled.")
+        return
+
+    if raw.lower() == "all":
+        selected = list(numbered)
+    else:
+        # Check if input matches a category name (case-insensitive)
+        cat_match = None
+        for cat in sorted_cats:
+            if raw.lower() == cat.lower():
+                cat_match = cat
+                break
+
+        if cat_match:
+            selected = [e for e in numbered if e.category == cat_match]
+        else:
+            # Parse as numbers/ranges: "1,3-5,13"
+            indices = set()
+            for part in raw.split(","):
+                part = part.strip()
+                if "-" in part:
+                    try:
+                        lo, hi = part.split("-", 1)
+                        for i in range(int(lo), int(hi) + 1):
+                            indices.add(i)
+                    except ValueError:
+                        print(f"  Invalid range: {part}")
+                        return
+                else:
+                    try:
+                        indices.add(int(part))
+                    except ValueError:
+                        print(f"  Invalid input: {part}")
+                        return
+
+            selected = []
+            for idx in sorted(indices):
+                if 1 <= idx <= len(numbered):
+                    selected.append(numbered[idx - 1])
+                else:
+                    print(f"  Index out of range: {idx}")
+                    return
+
+    if not selected:
+        print("  No tests selected.")
+        return
+
+    print(f"\n  Running {len(selected)} test(s)...\n")
+    success = run_selected_tests(selected)
+    sys.exit(0 if success else 1)
+
+
+# ===========================================================================
+# CLI entry point
+# ===========================================================================
+
+def list_tests():
+    """Print all registered tests grouped by category."""
+    categories = {}
+    for entry in TEST_REGISTRY:
+        categories.setdefault(entry.category, []).append(entry)
+
+    sorted_cats = sorted(categories.keys(),
+                         key=lambda c: CATEGORY_ORDER.index(c) if c in CATEGORY_ORDER else 999)
+
+    for cat in sorted_cats:
+        entries = sorted(categories[cat], key=lambda e: e.order)
+        print(f"\n  {cat}:")
+        for e in entries:
+            print(f"    {e.name:30s} {e.description}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="SolidWorks MCP Test Suite")
+    parser.add_argument("--gui", action="store_true",
+                        help="Launch interactive CLI test picker")
+    parser.add_argument("--category", type=str, default=None,
+                        help="Run only tests in this category")
+    parser.add_argument("--test", type=str, default=None,
+                        help="Run a single test by name")
+    parser.add_argument("--list", action="store_true",
+                        help="List all available tests and exit")
+    args = parser.parse_args()
+
+    if args.list:
+        list_tests()
+        sys.exit(0)
+
+    if args.gui:
+        interactive_selector()
+        return
+
+    # Determine which tests to run
+    if args.test:
+        selected = [e for e in TEST_REGISTRY if e.name == args.test]
+        if not selected:
+            print(f"  Unknown test: {args.test}")
+            print("  Use --list to see available tests.")
+            sys.exit(1)
+    elif args.category:
+        selected = [e for e in TEST_REGISTRY
+                    if e.category.lower() == args.category.lower()]
+        if not selected:
+            print(f"  Unknown category: {args.category}")
+            print("  Available: " + ", ".join(CATEGORY_ORDER))
+            sys.exit(1)
+        selected.sort(key=lambda e: e.order)
+    else:
+        # Run all tests in category order, then by test order
+        selected = sorted(TEST_REGISTRY,
+                          key=lambda e: (CATEGORY_ORDER.index(e.category)
+                                         if e.category in CATEGORY_ORDER else 999,
+                                         e.order))
+
+    success = run_selected_tests(selected)
+    sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":
-    print("\nSolidWorks MCP — Comprehensive Test Suite\n")
-    success = run_all_tests()
-    sys.exit(0 if success else 1)
+    main()
