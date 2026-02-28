@@ -103,9 +103,9 @@ clean.py                          # Close all open SolidWorks documents (standal
 
 **Extrusion end conditions:** Both `create_extrusion` and `create_cut_extrusion` accept an optional `endCondition` parameter: `"BLIND"` (default, extrudes to specified depth) or `"THROUGH_ALL"` (extrudes through entire body). Through All is especially useful for cut-extrusions where the agent doesn't need to calculate exact depth.
 
-### Sketch Tools (16 tools)
+### Sketch Tools (18 tools)
 
-`sketch_rectangle`, `sketch_circle`, `sketch_line`, `sketch_centerline`, `sketch_arc` (3-point or center-point), `sketch_spline`, `sketch_ellipse`, `sketch_polygon`, `sketch_slot`, `sketch_point`, `sketch_text`, `sketch_constraint`, `sketch_toggle_construction`, `create_sketch`, `exit_sketch`, `get_last_shape_info`.
+`sketch_rectangle`, `sketch_circle`, `sketch_line`, `sketch_centerline`, `sketch_arc` (3-point or center-point), `sketch_spline`, `sketch_ellipse`, `sketch_polygon`, `sketch_slot`, `sketch_point`, `sketch_text`, `sketch_dimension` (add smart dimension with optional driving value), `set_dimension_value` (modify existing dimension), `sketch_constraint`, `sketch_toggle_construction`, `create_sketch`, `exit_sketch`, `get_last_shape_info`.
 
 ### Modeling Tools (5 tools)
 
@@ -141,7 +141,7 @@ clean.py                          # Close all open SolidWorks documents (standal
 
 **Recommended workflow:** After creating geometry, call `get_body_info` for an overview, then `get_faces` or `get_edges` to find exact coordinates for fillet, chamfer, shell, draft, and pattern operations. The sample points and midpoints returned by these tools are guaranteed to be on/near the geometry and can be passed directly to selection-based tools.
 
-**Dimensioning tools (disabled):** `sketch_dimension` and `set_dimension_value` are implemented but disabled because `AddDimension2` triggers a blocking "Modify Dimension" dialog that cannot be reliably suppressed via COM automation. The methods are kept in `sketching.py` for future use.
+**Dimensioning tools:** `sketch_dimension` adds a smart dimension to selected sketch entities (1 entity for length/radius, 2 for between-distance), with an optional `value` parameter to set the driving value (mm). `set_dimension_value` modifies an existing dimension by selecting it at its text position. `AddDimension2` triggers a blocking "Modify" dialog; this is handled by a background thread that auto-dismisses the dialog via `win32gui` (finds window class `#32770` title "Modify", sends Enter). `AddToDB=True` / `DisplayWhenAdded=False` reduce UI overhead.
 
 **Hole Wizard (flagged):** May trigger a blocking PropertyManager dialog similar to the dimensioning issue. Uses `AddToDB=True` / `DisplayWhenAdded=False` as mitigation. If it fails, use sketch circle + cut-extrude as a workaround.
 

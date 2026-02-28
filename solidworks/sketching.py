@@ -5,10 +5,39 @@ Handles sketch creation and drawing operations with spatial tracking
 
 import logging
 import math
+import threading
+import time
 from mcp.types import Tool
 from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
+
+
+def dismiss_modify_dialog(delay=0.5, max_wait=10.0):
+    """Find and auto-dismiss the SolidWorks 'Modify' dimension dialog.
+
+    AddDimension2 triggers a blocking popup (Win32 class #32770, title
+    "Modify").  Call this in a background thread *before* AddDimension2
+    so it can dismiss the dialog as soon as it appears.
+    """
+    import win32gui
+    import win32con
+
+    deadline = time.monotonic() + max_wait
+    time.sleep(delay)
+    while time.monotonic() < deadline:
+        try:
+            hwnd = win32gui.FindWindow("#32770", "Modify")
+            if hwnd and win32gui.IsWindowVisible(hwnd):
+                win32gui.SetForegroundWindow(hwnd)
+                time.sleep(0.05)
+                win32gui.PostMessage(hwnd, win32con.WM_KEYDOWN, win32con.VK_RETURN, 0)
+                win32gui.PostMessage(hwnd, win32con.WM_KEYUP, win32con.VK_RETURN, 0)
+                logger.info("Auto-dismissed 'Modify' dimension dialog")
+                return
+        except Exception:
+            pass
+        time.sleep(0.1)
 
 
 class SketchingTools:
@@ -411,10 +440,72 @@ class SketchingTools:
                     "required": ["x", "y", "text", "height"]
                 }
             ),
-            # NOTE: sketch_dimension and set_dimension_value are disabled
-            # because AddDimension2 triggers a blocking "Modify Dimension"
-            # dialog that cannot be reliably suppressed via COM automation.
-            # The implementation methods are kept below for future use.
+            Tool(
+                name="solidworks_sketch_dimension",
+                description="Add a dimension to sketch entities. Select 1 entity for a single dimension (e.g., line length), or 2 entities for a between-dimension (e.g., distance between two lines). The dimension text is placed at (dimX, dimY). Optionally set the driving value immediately.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "entityPoints": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "x": {"type": "number", "description": "X coordinate on/near entity (mm)"},
+                                    "y": {"type": "number", "description": "Y coordinate on/near entity (mm)"}
+                                },
+                                "required": ["x", "y"]
+                            },
+                            "minItems": 1,
+                            "maxItems": 2,
+                            "description": "Points to select entities to dimension. 1 point for a single entity (line length, arc radius), 2 points for a between-dimension (distance between two entities)."
+                        },
+                        "entityTypes": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": ["SKETCHSEGMENT", "SKETCHPOINT", "EXTSKETCHPOINT"]
+                            },
+                            "description": "Selection type for each entity point. Default: SKETCHSEGMENT."
+                        },
+                        "dimX": {
+                            "type": "number",
+                            "description": "X position (mm) for the dimension text placement"
+                        },
+                        "dimY": {
+                            "type": "number",
+                            "description": "Y position (mm) for the dimension text placement"
+                        },
+                        "value": {
+                            "type": "number",
+                            "description": "Optional driving value (mm) to set on the dimension. If provided, the dimension becomes a driving dimension that constrains the geometry to this value."
+                        }
+                    },
+                    "required": ["entityPoints", "dimX", "dimY"]
+                }
+            ),
+            Tool(
+                name="solidworks_set_dimension_value",
+                description="Set the value of an existing dimension by selecting it at its text location. Changes the driving value of the dimension, which updates the sketch geometry accordingly.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "dimX": {
+                            "type": "number",
+                            "description": "X coordinate (mm) on/near the dimension text to select"
+                        },
+                        "dimY": {
+                            "type": "number",
+                            "description": "Y coordinate (mm) on/near the dimension text to select"
+                        },
+                        "value": {
+                            "type": "number",
+                            "description": "New dimension value (mm)"
+                        }
+                    },
+                    "required": ["dimX", "dimY", "value"]
+                }
+            ),
             Tool(
                 name="solidworks_sketch_constraint",
                 description="Add a geometric constraint (relation) between selected sketch entities.",
@@ -507,6 +598,8 @@ class SketchingTools:
             "solidworks_sketch_slot": lambda: self.sketch_slot(args),
             "solidworks_sketch_point": lambda: self.sketch_point(args),
             "solidworks_sketch_text": lambda: self.sketch_text(args),
+            "solidworks_sketch_dimension": lambda: self.sketch_dimension(args),
+            "solidworks_set_dimension_value": lambda: self.set_dimension_value(args),
             "solidworks_sketch_constraint": lambda: self.sketch_constraint(args),
             "solidworks_sketch_toggle_construction": lambda: self.toggle_construction(args),
             "solidworks_get_last_shape_info": lambda: self.get_last_shape_info(),
@@ -1125,10 +1218,11 @@ class SketchingTools:
             if not success:
                 raise Exception(f"Failed to select entity at ({pt['x']}, {pt['y']}) mm")
 
-        # Suppress the dimension dialog by bypassing UI entirely.
-        # Preference 86 is set globally at connection time. AddToDB +
-        # DisplayWhenAdded bypass the sketch manager UI pipeline so
-        # no PropertyManager / Modify dialog can appear.
+        # AddDimension2 triggers a blocking "Modify" dialog in SolidWorks.
+        # A background thread auto-dismisses it (see dismiss_modify_dialog).
+        dismiss_thread = threading.Thread(target=dismiss_modify_dialog, daemon=True)
+        dismiss_thread.start()
+
         sm = doc.SketchManager
         sm.AddToDB = True
         sm.DisplayWhenAdded = False
@@ -1157,6 +1251,7 @@ class SketchingTools:
         finally:
             sm.AddToDB = False
             sm.DisplayWhenAdded = True
+            dismiss_thread.join(timeout=2)
 
         if "value" in args:
             doc.ForceRebuild3(True)

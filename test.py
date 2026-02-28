@@ -629,6 +629,144 @@ def test_toggle_construction(sw, template):
         return False
 
 
+@register_test("sketch_dimension", "Sketch Dimension", "Sketch Tools",
+               "Draw a line, add a dimension, set its value, then modify it", order=11)
+def test_sketch_dimension(sw, template):
+    import threading
+    from solidworks.sketching import dismiss_modify_dialog
+
+    try:
+        model = new_sketch_on_front(sw, template)
+
+        # Draw a horizontal line 50mm long
+        model.SketchManager.CreateLine(0.0, 0.0, 0.0, 0.05, 0.0, 0.0)
+        log("Line created from (0,0) to (50,0) mm", "SUCCESS")
+
+        # Select the line for dimensioning
+        callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        model.ClearSelection2(True)
+        ok = model.Extension.SelectByID2(
+            "", "SKETCHSEGMENT", 0.025, 0.0, 0.0,
+            False, 0, callout, 0
+        )
+        if not ok:
+            log("Failed to select line for dimensioning", "ERROR")
+            return False
+
+        # Start thread to auto-dismiss the Modify dialog
+        t = threading.Thread(target=dismiss_modify_dialog, daemon=True)
+        t.start()
+
+        sm = model.SketchManager
+        sm.AddToDB = True
+        sm.DisplayWhenAdded = False
+        try:
+            dim_display = model.AddDimension2(0.025, -0.01, 0.0)
+        finally:
+            sm.AddToDB = False
+            sm.DisplayWhenAdded = True
+            t.join(timeout=2)
+
+        if not dim_display:
+            log("AddDimension2 returned None", "ERROR")
+            return False
+        log("Dimension added (dialog auto-dismissed)", "SUCCESS")
+
+        # Set dimension value to 80mm
+        dim = dim_display.GetDimension2(0)
+        if not dim:
+            log("GetDimension2 returned None", "ERROR")
+            return False
+        dim.SetSystemValue3(0.08, 2, "")  # 80mm in meters
+        model.ForceRebuild3(True)
+        log("Dimension value set to 80mm", "SUCCESS")
+
+        # Verify the dimension value was applied
+        current_val = dim.GetSystemValue3(2, "")
+        if isinstance(current_val, tuple):
+            current_mm = current_val[0] * 1000.0
+        else:
+            current_mm = current_val * 1000.0
+        if abs(current_mm - 80.0) > 0.01:
+            log(f"Dimension value mismatch: expected 80, got {current_mm:.2f}", "ERROR")
+            return False
+        log(f"Dimension value verified: {current_mm:.1f}mm", "SUCCESS")
+
+        # Test modifying the dimension value using the existing dim object
+        dim.SetSystemValue3(0.06, 2, "")  # Change to 60mm
+        model.ForceRebuild3(True)
+
+        current_val2 = dim.GetSystemValue3(2, "")
+        if isinstance(current_val2, tuple):
+            current_mm2 = current_val2[0] * 1000.0
+        else:
+            current_mm2 = current_val2 * 1000.0
+        if abs(current_mm2 - 60.0) > 0.01:
+            log(f"Modified dimension mismatch: expected 60, got {current_mm2:.2f}", "ERROR")
+            return False
+        log(f"Dimension value modified and verified: {current_mm2:.1f}mm", "SUCCESS")
+
+        exit_sketch(model)
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_dimension FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("sketch_dimension_mcp", "Sketch Dimension (MCP)", "Sketch Tools",
+               "Use SketchingTools methods to draw, dimension, and modify", order=12)
+def test_sketch_dimension_mcp(sw, template):
+    from solidworks.connection import SolidWorksConnection
+    from solidworks.sketching import SketchingTools
+
+    try:
+        # Wire up a SolidWorksConnection that reuses the existing sw instance
+        conn = SolidWorksConnection()
+        conn.app = sw
+        conn.template_path = template
+        sketching = SketchingTools(conn)
+
+        # create_sketch auto-creates a part when none is open
+        result = sketching.create_sketch({"plane": "Front"})
+        log(result, "SUCCESS")
+
+        # Draw a 50mm horizontal line via sketch_line
+        result = sketching.sketch_line({"x1": 0, "y1": 0, "x2": 50, "y2": 0})
+        log(result, "SUCCESS")
+
+        # Add a dimension on the line (no value yet — keeps geometry stable)
+        result = sketching.sketch_dimension({
+            "entityPoints": [{"x": 25, "y": 0}],
+            "dimX": 25, "dimY": -10,
+        })
+        log(result, "SUCCESS")
+
+        # Modify the dimension to 80mm via set_dimension_value
+        result = sketching.set_dimension_value({
+            "dimX": 25, "dimY": -10,
+            "value": 80
+        })
+        log(result, "SUCCESS")
+
+        if "80" not in result:
+            log(f"Expected '80' in result: {result}", "ERROR")
+            return False
+
+        # Exit sketch
+        result = sketching.exit_sketch()
+        log(result, "SUCCESS")
+
+        model = conn.get_active_doc()
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"sketch_dimension_mcp FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
 # ===========================================================================
 # TEST FUNCTIONS — Feature Tools
 # ===========================================================================
