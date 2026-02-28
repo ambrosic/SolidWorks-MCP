@@ -64,6 +64,7 @@ solidworks/
   patterns.py                     # Patterns (linear pattern, circular pattern, mirror)
   hole_features.py                # Hole features (hole wizard, cosmetic thread)
   reference_geometry.py           # Reference geometry (ref plane, ref axis, ref point, coordinate system)
+  geometry_query.py               # Geometry inspection (body info, faces, edges, face edges, vertices)
 test.py                           # Unified test suite with registry, CLI selector (--gui), category/test filters
 clean.py                          # Close all open SolidWorks documents (standalone utility)
 ```
@@ -134,6 +135,12 @@ clean.py                          # Close all open SolidWorks documents (standal
 
 `ref_plane` (offset/angle/through-point), `ref_axis` (two-points/cylindrical-face/edge), `ref_point` (coordinates/arc-center/face-center/on-edge), `coordinate_system` (origin + optional axis edges).
 
+### Geometry Query Tools (5 tools)
+
+`get_body_info` (bounding box, face/edge/vertex counts), `get_faces` (enumerate with type, area, normal, sample point; optional `surfaceType` filter), `get_edges` (enumerate with endpoints, midpoint, length; optional `edgeType` filter), `get_face_edges` (edges of a specific face by coordinate), `get_vertices` (all unique vertex coordinates).
+
+**Recommended workflow:** After creating geometry, call `get_body_info` for an overview, then `get_faces` or `get_edges` to find exact coordinates for fillet, chamfer, shell, draft, and pattern operations. The sample points and midpoints returned by these tools are guaranteed to be on/near the geometry and can be passed directly to selection-based tools.
+
 **Dimensioning tools (disabled):** `sketch_dimension` and `set_dimension_value` are implemented but disabled because `AddDimension2` triggers a blocking "Modify Dimension" dialog that cannot be reliably suppressed via COM automation. The methods are kept in `sketching.py` for future use.
 
 **Hole Wizard (flagged):** May trigger a blocking PropertyManager dialog similar to the dimensioning issue. Uses `AddToDB=True` / `DisplayWhenAdded=False` as mitigation. If it fails, use sketch circle + cut-extrude as a workaround.
@@ -149,6 +156,7 @@ clean.py                          # Close all open SolidWorks documents (standal
 - `FeatureFillet3`, `InsertFeatureChamfer`, `InsertFeatureShell`, `InsertFeatureDraft` - see `applied_features.py`
 - `FeatureLinearPattern4`, `FeatureCircularPattern4`, `InsertMirrorFeature2` - see `patterns.py`
 - `InsertRefPlane`, `InsertRefAxis`, `InsertReferencePoint`, `InsertCoordinateSystem` - see `reference_geometry.py`
+- `IBody2::GetBodyBox`, `IBody2::GetFaces`, `IBody2::GetEdges`, `IFace2::GetArea`, `IFace2::GetUVBounds`, `ISurface::Evaluate`, `IEdge::GetStartVertex`, `IEdge::GetEndVertex`, `IEdge::GetClosestPointOn` - see `geometry_query.py`
 
 **Logging:** Written to `solidworks_mcp.log` in the project root and to stdout. Log level is INFO.
 

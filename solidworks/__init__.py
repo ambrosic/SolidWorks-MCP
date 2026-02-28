@@ -11,6 +11,7 @@ from .applied_features import AppliedFeatureTools
 from .patterns import PatternTools
 from .hole_features import HoleFeatureTools
 from .reference_geometry import ReferenceGeometryTools
+from .geometry_query import GeometryQueryTools
 
 __all__ = [
     'SolidWorksConnection',
@@ -22,4 +23,5 @@ __all__ = [
     'PatternTools',
     'HoleFeatureTools',
     'ReferenceGeometryTools',
+    'GeometryQueryTools',
 ]
