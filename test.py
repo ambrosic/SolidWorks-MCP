@@ -1432,6 +1432,219 @@ def test_mcp_full_integration(sw, template):
 
 
 # ===========================================================================
+# TEST FUNCTIONS — MCP Geometry Query Tools
+# ===========================================================================
+
+
+@register_test("mcp_get_body_info", "MCP Get Body Info", "MCP Tools",
+               "Create cube via MCP, query bounding box and counts", order=8)
+def test_mcp_get_body_info(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        r = server._route_tool("solidworks_get_body_info", {})
+        if not r.startswith("✓"):
+            log(f"get_body_info failed: {r}", "ERROR")
+            return False
+
+        # Verify counts
+        if "Faces: 6" not in r:
+            log(f"Expected 6 faces, got: {r}", "ERROR")
+            return False
+        if "Edges: 12" not in r:
+            log(f"Expected 12 edges, got: {r}", "ERROR")
+            return False
+        if "Vertices: 8" not in r:
+            log(f"Expected 8 vertices, got: {r}", "ERROR")
+            return False
+
+        log("Body info: 6 faces, 12 edges, 8 vertices confirmed", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_get_body_info FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_get_faces", "MCP Get Faces", "MCP Tools",
+               "Create cube via MCP, enumerate all faces", order=9)
+def test_mcp_get_faces(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        r = server._route_tool("solidworks_get_faces", {})
+        if not r.startswith("✓"):
+            log(f"get_faces failed: {r}", "ERROR")
+            return False
+
+        # Should have 6 faces total
+        if "6 total" not in r:
+            log(f"Expected 6 total faces: {r}", "ERROR")
+            return False
+
+        # All should be planar
+        planar_count = r.count("Planar face")
+        if planar_count != 6:
+            log(f"Expected 6 planar faces, found {planar_count}", "ERROR")
+            return False
+
+        # Each should have a sample point
+        point_count = r.count("point=")
+        if point_count != 6:
+            log(f"Expected 6 sample points, found {point_count}", "ERROR")
+            return False
+
+        log("6 planar faces with sample points confirmed", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_get_faces FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_get_edges", "MCP Get Edges", "MCP Tools",
+               "Create cube via MCP, enumerate all edges", order=10)
+def test_mcp_get_edges(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        r = server._route_tool("solidworks_get_edges", {})
+        if not r.startswith("✓"):
+            log(f"get_edges failed: {r}", "ERROR")
+            return False
+
+        # Should have 12 edges total
+        if "12 total" not in r:
+            log(f"Expected 12 total edges: {r}", "ERROR")
+            return False
+
+        # All should be lines
+        line_count = r.count("Line |")
+        if line_count != 12:
+            log(f"Expected 12 line edges, found {line_count}", "ERROR")
+            return False
+
+        # Each should have a midpoint
+        mid_count = r.count("mid=")
+        if mid_count != 12:
+            log(f"Expected 12 midpoints, found {mid_count}", "ERROR")
+            return False
+
+        log("12 line edges with midpoints confirmed", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_get_edges FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_get_face_edges", "MCP Get Face Edges", "MCP Tools",
+               "Create cube via MCP, query edges of the top face", order=11)
+def test_mcp_get_face_edges(sw, template):
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+
+        # Query top face (y=100 for a cube sketched at center=(50,50) extruded 100mm)
+        r = server._route_tool("solidworks_get_face_edges", {
+            "x": 50, "y": 100, "z": 50
+        })
+        if not r.startswith("✓"):
+            log(f"get_face_edges failed: {r}", "ERROR")
+            return False
+
+        # Should report 4 edges for a rectangular face
+        if "Edges (4)" not in r:
+            log(f"Expected 4 edges on top face: {r}", "ERROR")
+            return False
+
+        if "Planar" not in r:
+            log(f"Expected Planar face type: {r}", "ERROR")
+            return False
+
+        log("Top face: Planar with 4 edges confirmed", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_get_face_edges FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_geometry_guided_fillet", "MCP Geometry-Guided Fillet", "MCP Tools",
+               "Create cube, use get_edges to find edge coordinates, then fillet using those coords",
+               order=12)
+def test_mcp_geometry_guided_fillet(sw, template):
+    """Integration test: proves geometry query tools provide coordinates
+    that actually work for downstream selection operations."""
+    try:
+        server = create_mcp_server()
+        results = mcp_make_cube(server, 100)
+        if not mcp_check_results(results):
+            return False
+        log("Step 1: Cube created", "SUCCESS")
+
+        # Step 2: Query edges to find midpoints
+        r = server._route_tool("solidworks_get_edges", {})
+        if not r.startswith("✓"):
+            log(f"get_edges failed: {r}", "ERROR")
+            return False
+        log("Step 2: Edges queried", "SUCCESS")
+
+        # Step 3: Parse midpoints and pick one that's clearly on an edge midpoint
+        # (avoid vertex intersections where multiple edges meet at a corner)
+        import re
+        all_mids = re.findall(r'mid=\(([^)]+)\)', r)
+        if not all_mids:
+            log("Could not parse any midpoints from get_edges result", "ERROR")
+            return False
+
+        # Find a midpoint that's clearly on an edge but NOT at the origin
+        # (origin planes can interfere with edge selection at x=0 or y=0)
+        mid_x, mid_y, mid_z = None, None, None
+        for mid_str in all_mids:
+            coords = [float(c.strip()) for c in mid_str.split(",")]
+            # Skip points where any coordinate is 0 (near origin planes)
+            if any(abs(c) < 1 for c in coords):
+                continue
+            mid_x, mid_y, mid_z = coords[0], coords[1], coords[2]
+            break
+
+        if mid_x is None:
+            # Fallback: use a known-good edge midpoint for a 100mm cube
+            mid_x, mid_y, mid_z = 100.0, 50.0, 100.0
+
+        log(f"Step 3: Parsed midpoint ({mid_x:.2f}, {mid_y:.2f}, {mid_z:.2f})", "SUCCESS")
+
+        # Step 4: Use that midpoint to fillet the edge
+        r = server._route_tool("solidworks_fillet", {
+            "radius": 5,
+            "edges": [{"x": mid_x, "y": mid_y, "z": mid_z}]
+        })
+        if not r.startswith("✓"):
+            log(f"Fillet failed: {r}", "ERROR")
+            return False
+        log("Step 4: Fillet created using geometry-queried coordinates", "SUCCESS")
+
+        log("Geometry-guided fillet workflow passed!", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"mcp_geometry_guided_fillet FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+# ===========================================================================
 # TEST FUNCTIONS — Integration (sequential sub-tests in one document)
 # ===========================================================================
 

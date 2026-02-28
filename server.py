@@ -23,6 +23,7 @@ from solidworks import (
     PatternTools,
     HoleFeatureTools,
     ReferenceGeometryTools,
+    GeometryQueryTools,
 )
 
 # Configure logging
@@ -54,6 +55,7 @@ class SolidWorksMCPServer:
         self.patterns = PatternTools(self.connection)
         self.hole_features = HoleFeatureTools(self.connection)
         self.reference_geometry = ReferenceGeometryTools(self.connection)
+        self.geometry_query = GeometryQueryTools(self.connection)
 
         # All modules (order matters for tool listing)
         self._modules = [
@@ -65,6 +67,7 @@ class SolidWorksMCPServer:
             self.patterns,
             self.hole_features,
             self.reference_geometry,
+            self.geometry_query,
         ]
 
         # Build dispatch map: tool_name -> module
