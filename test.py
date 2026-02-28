@@ -715,58 +715,6 @@ def test_sketch_dimension(sw, template):
         return False
 
 
-@register_test("sketch_dimension_mcp", "Sketch Dimension (MCP)", "Sketch Tools",
-               "Use SketchingTools methods to draw, dimension, and modify", order=12)
-def test_sketch_dimension_mcp(sw, template):
-    from solidworks.connection import SolidWorksConnection
-    from solidworks.sketching import SketchingTools
-
-    try:
-        # Wire up a SolidWorksConnection that reuses the existing sw instance
-        conn = SolidWorksConnection()
-        conn.app = sw
-        conn.template_path = template
-        sketching = SketchingTools(conn)
-
-        # create_sketch auto-creates a part when none is open
-        result = sketching.create_sketch({"plane": "Front"})
-        log(result, "SUCCESS")
-
-        # Draw a 50mm horizontal line via sketch_line
-        result = sketching.sketch_line({"x1": 0, "y1": 0, "x2": 50, "y2": 0})
-        log(result, "SUCCESS")
-
-        # Add a dimension on the line (no value yet — keeps geometry stable)
-        result = sketching.sketch_dimension({
-            "entityPoints": [{"x": 25, "y": 0}],
-            "dimX": 25, "dimY": -10,
-        })
-        log(result, "SUCCESS")
-
-        # Modify the dimension to 80mm via set_dimension_value
-        result = sketching.set_dimension_value({
-            "dimX": 25, "dimY": -10,
-            "value": 80
-        })
-        log(result, "SUCCESS")
-
-        if "80" not in result:
-            log(f"Expected '80' in result: {result}", "ERROR")
-            return False
-
-        # Exit sketch
-        result = sketching.exit_sketch()
-        log(result, "SUCCESS")
-
-        model = conn.get_active_doc()
-        model.ViewZoomtofit2()
-        return True
-    except Exception as e:
-        log(f"sketch_dimension_mcp FAILED: {e}", "ERROR")
-        traceback.print_exc()
-        return False
-
-
 # ===========================================================================
 # TEST FUNCTIONS — Feature Tools
 # ===========================================================================
@@ -1778,6 +1726,58 @@ def test_mcp_geometry_guided_fillet(sw, template):
         return True
     except Exception as e:
         log(f"mcp_geometry_guided_fillet FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
+@register_test("mcp_sketch_dimension", "MCP Sketch Dimension", "MCP Tools",
+               "Use SketchingTools methods to draw, dimension, and modify", order=13)
+def test_mcp_sketch_dimension(sw, template):
+    from solidworks.connection import SolidWorksConnection
+    from solidworks.sketching import SketchingTools
+
+    try:
+        # Wire up a SolidWorksConnection that reuses the existing sw instance
+        conn = SolidWorksConnection()
+        conn.app = sw
+        conn.template_path = template
+        sketching = SketchingTools(conn)
+
+        # create_sketch auto-creates a part when none is open
+        result = sketching.create_sketch({"plane": "Front"})
+        log(result, "SUCCESS")
+
+        # Draw a 50mm horizontal line via sketch_line
+        result = sketching.sketch_line({"x1": 0, "y1": 0, "x2": 50, "y2": 0})
+        log(result, "SUCCESS")
+
+        # Add a dimension on the line (no value yet — keeps geometry stable)
+        result = sketching.sketch_dimension({
+            "entityPoints": [{"x": 25, "y": 0}],
+            "dimX": 25, "dimY": -10,
+        })
+        log(result, "SUCCESS")
+
+        # Modify the dimension to 80mm via set_dimension_value
+        result = sketching.set_dimension_value({
+            "dimX": 25, "dimY": -10,
+            "value": 80
+        })
+        log(result, "SUCCESS")
+
+        if "80" not in result:
+            log(f"Expected '80' in result: {result}", "ERROR")
+            return False
+
+        # Exit sketch
+        result = sketching.exit_sketch()
+        log(result, "SUCCESS")
+
+        model = conn.get_active_doc()
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"mcp_sketch_dimension FAILED: {e}", "ERROR")
         traceback.print_exc()
         return False
 
