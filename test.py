@@ -1782,6 +1782,61 @@ def test_mcp_sketch_dimension(sw, template):
         return False
 
 
+@register_test("mcp_angular_dimension", "MCP Angular Dimension", "MCP Tools",
+               "Draw two lines, add angular dimension in degrees, verify conversion", order=14)
+def test_mcp_angular_dimension(sw, template):
+    from solidworks.connection import SolidWorksConnection
+    from solidworks.sketching import SketchingTools
+
+    try:
+        conn = SolidWorksConnection()
+        conn.app = sw
+        conn.template_path = template
+        sketching = SketchingTools(conn)
+
+        # Create sketch on Front plane
+        result = sketching.create_sketch({"plane": "Front"})
+        log(result, "SUCCESS")
+
+        # Draw two lines from origin — roughly 60 degrees apart
+        # Line 1: along X axis
+        result = sketching.sketch_line({"x1": 0, "y1": 0, "x2": 50, "y2": 0})
+        log(result, "SUCCESS")
+
+        # Line 2: from origin at ~60 degrees
+        result = sketching.sketch_line({"x1": 0, "y1": 0, "x2": 25, "y2": 43.3})
+        log(result, "SUCCESS")
+
+        # Add angular dimension between the two lines, set to 45 degrees
+        result = sketching.sketch_dimension({
+            "entityPoints": [
+                {"x": 25, "y": 0},       # point on line 1
+                {"x": 12.5, "y": 21.65}  # point on line 2
+            ],
+            "dimX": 20, "dimY": 15,
+            "value": 45
+        })
+        log(result, "SUCCESS")
+
+        # Verify the result message says degrees (°), not mm
+        if "\u00b0" not in result:
+            log(f"Expected '\u00b0' in angular dimension result: {result}", "ERROR")
+            return False
+        log("Angular dimension correctly reports degrees", "SUCCESS")
+
+        # Exit sketch
+        result = sketching.exit_sketch()
+        log(result, "SUCCESS")
+
+        model = conn.get_active_doc()
+        model.ViewZoomtofit2()
+        return True
+    except Exception as e:
+        log(f"mcp_angular_dimension FAILED: {e}", "ERROR")
+        traceback.print_exc()
+        return False
+
+
 # ===========================================================================
 # TEST FUNCTIONS — Integration (sequential sub-tests in one document)
 # ===========================================================================

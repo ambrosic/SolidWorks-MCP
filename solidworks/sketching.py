@@ -476,7 +476,7 @@ class SketchingTools:
                         },
                         "value": {
                             "type": "number",
-                            "description": "Optional driving value (mm) to set on the dimension. If provided, the dimension becomes a driving dimension that constrains the geometry to this value."
+                            "description": "Optional driving value to set on the dimension (mm for linear, degrees for angular). If provided, the dimension becomes a driving dimension that constrains the geometry to this value. The dimension type is auto-detected."
                         }
                     },
                     "required": ["entityPoints", "dimX", "dimY"]
@@ -498,7 +498,7 @@ class SketchingTools:
                         },
                         "value": {
                             "type": "number",
-                            "description": "New dimension value (mm)"
+                            "description": "New dimension value (mm for linear, degrees for angular dimensions)"
                         }
                     },
                     "required": ["dimX", "dimY", "value"]
@@ -1185,6 +1185,21 @@ class SketchingTools:
         logger.info(f"Text: '{text}' at ({x}, {y}) mm, height {height}mm")
         return f"✓ Text '{text}' at ({x:.1f}, {y:.1f}) mm, height {height}mm"
 
+    @staticmethod
+    def _convert_dimension_value(dim_display, user_value: float) -> tuple:
+        """Convert user-supplied dimension value to SolidWorks system units.
+        Angular (Type2==1): degrees -> radians. All others: mm -> meters.
+        """
+        SW_ANGULAR_DIMENSION = 3  # swDisplayDimensionType_e.swAngularDimension
+        try:
+            dim_type = dim_display.Type2
+        except Exception:
+            dim_type = -1  # fallback: assume linear
+        if dim_type == SW_ANGULAR_DIMENSION:
+            return math.radians(user_value), "\u00b0"
+        else:
+            return user_value / 1000.0, "mm"
+
     def sketch_dimension(self, args: dict) -> str:
         """Add a smart dimension to selected sketch entities"""
         doc = self.connection.get_active_doc()
@@ -1239,11 +1254,11 @@ class SketchingTools:
 
             # Optionally set the dimension value to drive geometry
             if "value" in args:
-                value_m = args["value"] / 1000.0
+                system_value, unit_label = self._convert_dimension_value(dim_display, args["value"])
                 dim = dim_display.GetDimension2(0)
                 if dim:
-                    dim.SetSystemValue3(value_m, 2, "")
-                    result_msg += f", value set to {args['value']}mm"
+                    dim.SetSystemValue3(system_value, 2, "")
+                    result_msg += f", value set to {args['value']}{unit_label}"
 
             doc.ClearSelection2(True)
         finally:
@@ -1285,13 +1300,13 @@ class SketchingTools:
         dim_display = sel_mgr.GetSelectedObject6(1, -1)
         dim = dim_display.GetDimension2(0)
 
-        value_m = args["value"] / 1000.0
-        dim.SetSystemValue3(value_m, 2, "")
+        system_value, unit_label = self._convert_dimension_value(dim_display, args["value"])
+        dim.SetSystemValue3(system_value, 2, "")
         doc.ClearSelection2(True)
         doc.ForceRebuild3(True)
 
-        logger.info(f"Dimension value set to {args['value']}mm at ({args['dimX']}, {args['dimY']})")
-        return f"✓ Dimension value set to {args['value']}mm"
+        logger.info(f"Dimension value set to {args['value']}{unit_label} at ({args['dimX']}, {args['dimY']})")
+        return f"✓ Dimension value set to {args['value']}{unit_label}"
 
     # Constraint type mapping: user-friendly name -> SolidWorks API string
     CONSTRAINT_MAP = {
