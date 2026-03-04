@@ -55,6 +55,8 @@ server.py                         # MCP server: registers tools, routes calls vi
 solidworks/
   __init__.py                     # Package exports for all modules
   connection.py                   # COM connection to SolidWorks, template discovery, part creation
+  state_tracker.py                # Centralized state tracker: stable IDs for features, sketches, entities
+  state_query.py                  # MCP tools for querying tracked state (get_state, get_entity, get_sketch_entities)
   sketching.py                    # 2D sketch tools, dimensioning, and constraints with spatial tracking
   modeling.py                     # Core modeling (new_part, extrusion, cut-extrusion, mass_properties, list_features)
   selection_helpers.py            # Shared selection utilities (edge, face, plane, feature, axis)
@@ -81,7 +83,17 @@ clean.py                          # Close all open SolidWorks documents (standal
 
 **Units:** All tool inputs/outputs use millimeters. The SolidWorks COM API requires meters, so all values are divided by 1000 internally before API calls. Angles are input in degrees and converted to radians internally.
 
-**Spatial tracking:** `SketchingTools` maintains a `last_shape` dict with the center, edges, width/height/radius of the most recently drawn shape. This enables Claude to position shapes relative to previous ones without needing to track coordinates itself. Entities that update spatial tracking: rectangle, circle, line, arc, polygon, ellipse, spline, slot. Entities that do NOT update tracking: point, centerline, text.
+**State tracking:** A centralized `StateTracker` (`state_tracker.py`) assigns stable IDs to all created objects and maintains them across the session. IDs follow the format:
+- Features: `feat:<sw_name>` (e.g., `feat:Boss-Extrude1`)
+- Sketches: `sketch:<sw_name>` (e.g., `sketch:Sketch1`)
+- Sketch entities: `entity:<sketch>/<type>_<idx>` (e.g., `entity:Sketch1/rect_0`, `entity:Sketch1/line_0`)
+- Reference geometry: `ref:<sw_name>` (e.g., `ref:Plane1`)
+
+All tools accept both tracked IDs and raw SolidWorks names. When raw names are used, a deprecation warning is logged. The tracker is reset on `new_part`.
+
+**JSON returns:** All tools return JSON strings with a standard structure: `{"result": "✓ ...", "id": "feat:...", "type": "..."}`. Geometry query tools return structured data (faces/edges/vertices as arrays of objects). Error returns remain plain strings prefixed with `❌`.
+
+**Spatial tracking:** The `StateTracker` maintains a `last_shape` dict with the center, edges, width/height/radius of the most recently drawn shape. This enables Claude to position shapes relative to previous ones without needing to track coordinates itself. Entities that update spatial tracking: rectangle, circle, line, arc, polygon, ellipse, spline, slot. Entities that do NOT update tracking: point, centerline, text.
 
 **Positioning priority** in `sketch_rectangle`/`sketch_circle`/`sketch_polygon` (highest wins):
 1. Absolute `centerX`/`centerY`
@@ -89,17 +101,17 @@ clean.py                          # Close all open SolidWorks documents (standal
 3. Relative `relativeX`/`relativeY` offset from last center
 4. Default: origin `(0, 0)`
 
-**Loft workflow:** Lofts require profiles on different planes. The `create_sketch` `plane` parameter accepts both standard planes ("Front", "Top", "Right") and custom reference plane names ("Plane1", "Plane2", etc.). Typical workflow:
-1. `create_sketch(plane="Front")` → draw first profile → `exit_sketch` (returns sketch name, e.g., "Sketch1")
-2. `ref_plane(type="OFFSET", referencePlane="Front", offset=80)` (returns plane name, e.g., "Plane1")
-3. `create_sketch(plane="Plane1")` → draw second profile → `exit_sketch` (returns "Sketch2")
-4. `loft(profileSketches=["Sketch1", "Sketch2"])`
+**Loft workflow:** Lofts require profiles on different planes. The `create_sketch` `plane` parameter accepts both standard planes ("Front", "Top", "Right") and custom reference plane names or IDs ("Plane1", "ref:Plane1"). Typical workflow:
+1. `create_sketch(plane="Front")` → draw first profile → `exit_sketch` (returns `{"id": "sketch:Sketch1", ...}`)
+2. `ref_plane(type="OFFSET", referencePlane="Front", offset=80)` (returns `{"id": "ref:Plane1", ...}`)
+3. `create_sketch(plane="Plane1")` → draw second profile → `exit_sketch` (returns `{"id": "sketch:Sketch2", ...}`)
+4. `loft(profileSketches=["sketch:Sketch1", "sketch:Sketch2"])` — accepts both IDs and raw names
 
 **Selection helpers** (`selection_helpers.py`): All geometry selection (edges, faces, planes, features, axes, vertices) is centralized here. Functions accept coordinates in mm and convert to meters. Used by all feature modules. Key functions: `select_edge`, `select_face`, `select_plane`, `select_feature`, `select_sketch`, `select_axis`, `select_vertex`, `select_multiple_edges`, `select_multiple_faces`.
 
-**Module pattern:** Each feature module follows the same structure: class with `__init__(self, connection)`, `get_tool_definitions() -> list[Tool]`, and `execute(tool_name, args) -> str`. Return strings prefixed with ✓ on success; raise exceptions on failure.
+**Module pattern:** Each feature module follows the same structure: class with `__init__(self, connection, tracker=None)`, `get_tool_definitions() -> list[Tool]`, and `execute(tool_name, args) -> str`. Returns are JSON strings. Modules that accept sketch/feature name inputs (features, cut_features, patterns) have a `_resolve_name()` helper that accepts both tracked IDs and raw SolidWorks names.
 
-**Feature name returns:** All tools that create features return the SolidWorks feature name in their success string (e.g., `"✓ Extrusion 'Boss-Extrude1' 50mm created"`). This enables agents to chain operations — e.g., create an extrusion, read its name from the return, then pass it to `fillet`, `mirror`, or `linear_pattern`. Sketch tools return the sketch name (e.g., `"✓ Exited sketch mode (Sketch1)"`), and `ref_plane` returns the plane name (e.g., `"✓ Reference plane 'Plane1' created"`).
+**Feature ID returns:** All tools that create objects return a JSON string containing the stable ID (e.g., `{"result": "✓ Extrusion ...", "id": "feat:Boss-Extrude1", "type": "extrusion"}`). Agents should use these IDs for subsequent operations. Sketch entity tools also include the parent `sketchId`.
 
 **Extrusion end conditions:** Both `create_extrusion` and `create_cut_extrusion` accept an optional `endCondition` parameter: `"BLIND"` (default, extrudes to specified depth) or `"THROUGH_ALL"` (extrudes through entire body). Through All is especially useful for cut-extrusions where the agent doesn't need to calculate exact depth.
 
@@ -140,6 +152,10 @@ clean.py                          # Close all open SolidWorks documents (standal
 `get_body_info` (bounding box, face/edge/vertex counts), `get_faces` (enumerate with type, area, normal, sample point; optional `surfaceType` filter), `get_edges` (enumerate with endpoints, midpoint, length; optional `edgeType` filter), `get_face_edges` (edges of a specific face by coordinate), `get_vertices` (all unique vertex coordinates).
 
 **Recommended workflow:** After creating geometry, call `get_body_info` for an overview, then `get_faces` or `get_edges` to find exact coordinates for fillet, chamfer, shell, draft, and pattern operations. The sample points and midpoints returned by these tools are guaranteed to be on/near the geometry and can be passed directly to selection-based tools.
+
+### State Query Tools (3 tools)
+
+`get_state` (full session state summary: all tracked features, sketches, entities, and reference geometry), `get_entity` (detailed info about a single object by its tracked ID), `get_sketch_entities` (list all entities in a specific sketch with their types and coordinates).
 
 **Dimensioning tools:** `sketch_dimension` adds a smart dimension to selected sketch entities (1 entity for length/radius, 2 for between-distance), with an optional `value` parameter to set the driving value (mm for linear dimensions, degrees for angular dimensions). The dimension type is auto-detected via `IDisplayDimension.Type2`; angular values are converted to radians internally, linear values to meters. `set_dimension_value` modifies an existing dimension by selecting it at its text position. `AddDimension2` triggers a blocking "Modify" dialog; this is handled by a background thread that auto-dismisses the dialog via `win32gui` (finds window class `#32770` title "Modify", sends Enter). `AddToDB=True` / `DisplayWhenAdded=False` reduce UI overhead.
 

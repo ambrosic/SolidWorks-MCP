@@ -3,6 +3,7 @@ SolidWorks Reference Geometry Tools
 Reference Plane, Reference Axis, Reference Point, Coordinate System
 """
 
+import json
 import logging
 import math
 from mcp.types import Tool
@@ -14,8 +15,14 @@ logger = logging.getLogger(__name__)
 class ReferenceGeometryTools:
     """Reference geometry creation operations"""
 
-    def __init__(self, connection):
+    def __init__(self, connection, tracker=None):
         self.connection = connection
+        self.tracker = tracker
+
+    def _json_result(self, result, **extra):
+        d = {"result": result}
+        d.update(extra)
+        return json.dumps(d)
 
     def get_tool_definitions(self) -> list[Tool]:
         return [
@@ -264,10 +271,18 @@ class ReferenceGeometryTools:
                 raise Exception("Failed to create offset reference plane")
 
             plane_name = feature.Name
+            ref_id = None
+            if self.tracker:
+                ref_id = self.tracker.register_ref_geometry(plane_name, "plane", parameters={
+                    "method": "OFFSET",
+                    "referencePlane": ref_plane_name,
+                    "offset": args.get("offset", 0),
+                })
+
             doc.ViewZoomtofit2()
             offset_mm = args.get("offset", 0)
             logger.info(f"Reference plane '{plane_name}' created: offset {offset_mm}mm from {ref_plane_name}")
-            return f"✓ Reference plane '{plane_name}' created: offset {offset_mm}mm from {ref_plane_name}"
+            return self._json_result(f"✓ Reference plane '{plane_name}' created: offset {offset_mm}mm from {ref_plane_name}", id=ref_id, type="ref_plane")
 
         elif plane_type == "ANGLE":
             angle_deg = args.get("angle", 0)
@@ -298,9 +313,17 @@ class ReferenceGeometryTools:
                 raise Exception("Failed to create angled reference plane")
 
             plane_name = feature.Name
+            ref_id = None
+            if self.tracker:
+                ref_id = self.tracker.register_ref_geometry(plane_name, "plane", parameters={
+                    "method": "ANGLE",
+                    "referencePlane": ref_plane_name,
+                    "angle": angle_deg,
+                })
+
             doc.ViewZoomtofit2()
             logger.info(f"Reference plane '{plane_name}' created: {angle_deg}° from {ref_plane_name}")
-            return f"✓ Reference plane '{plane_name}' created: {angle_deg}° from {ref_plane_name}"
+            return self._json_result(f"✓ Reference plane '{plane_name}' created: {angle_deg}° from {ref_plane_name}", id=ref_id, type="ref_plane")
 
         elif plane_type == "THROUGH_POINT":
             point = args.get("point")
@@ -329,9 +352,17 @@ class ReferenceGeometryTools:
                 raise Exception("Failed to create reference plane through point")
 
             plane_name = feature.Name
+            ref_id = None
+            if self.tracker:
+                ref_id = self.tracker.register_ref_geometry(plane_name, "plane", parameters={
+                    "method": "THROUGH_POINT",
+                    "referencePlane": ref_plane_name,
+                    "point": point,
+                })
+
             doc.ViewZoomtofit2()
             logger.info(f"Reference plane '{plane_name}' created through point, parallel to {ref_plane_name}")
-            return f"✓ Reference plane '{plane_name}' created through point, parallel to {ref_plane_name}"
+            return self._json_result(f"✓ Reference plane '{plane_name}' created through point, parallel to {ref_plane_name}", id=ref_id, type="ref_plane")
 
         else:
             raise Exception(f"Unknown plane type: {plane_type}")
@@ -375,9 +406,15 @@ class ReferenceGeometryTools:
             raise Exception("Failed to create reference axis. Verify selections.")
 
         feature_name = feature.Name
+        ref_id = None
+        if self.tracker:
+            ref_id = self.tracker.register_ref_geometry(feature_name, "axis", parameters={
+                "method": axis_type,
+            })
+
         doc.ViewZoomtofit2()
         logger.info(f"Reference axis '{feature_name}' created ({axis_type})")
-        return f"✓ Reference axis '{feature_name}' created ({axis_type})"
+        return self._json_result(f"✓ Reference axis '{feature_name}' created ({axis_type})", id=ref_id, type="ref_axis")
 
     def ref_point(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -408,9 +445,16 @@ class ReferenceGeometryTools:
                 raise Exception("Failed to create reference point at coordinates")
 
             feature_name = feature.Name
+            ref_id = None
+            if self.tracker:
+                ref_id = self.tracker.register_ref_geometry(feature_name, "point", parameters={
+                    "method": "COORDINATES",
+                    "x": x, "y": y, "z": z,
+                })
+
             doc.ViewZoomtofit2()
             logger.info(f"Reference point '{feature_name}' created at ({x}, {y}, {z}) mm")
-            return f"✓ Reference point '{feature_name}' created at ({x}, {y}, {z}) mm"
+            return self._json_result(f"✓ Reference point '{feature_name}' created at ({x}, {y}, {z}) mm", id=ref_id, type="ref_point")
 
         elif point_type == "ARC_CENTER":
             edge = args.get("edge")
@@ -427,9 +471,15 @@ class ReferenceGeometryTools:
                 raise Exception("Failed to create reference point at arc center")
 
             feature_name = feature.Name
+            ref_id = None
+            if self.tracker:
+                ref_id = self.tracker.register_ref_geometry(feature_name, "point", parameters={
+                    "method": "ARC_CENTER",
+                })
+
             doc.ViewZoomtofit2()
             logger.info(f"Reference point '{feature_name}' created at arc center")
-            return f"✓ Reference point '{feature_name}' created at arc center"
+            return self._json_result(f"✓ Reference point '{feature_name}' created at arc center", id=ref_id, type="ref_point")
 
         elif point_type == "FACE_CENTER":
             face = args.get("face")
@@ -446,9 +496,15 @@ class ReferenceGeometryTools:
                 raise Exception("Failed to create reference point on face")
 
             feature_name = feature.Name
+            ref_id = None
+            if self.tracker:
+                ref_id = self.tracker.register_ref_geometry(feature_name, "point", parameters={
+                    "method": "FACE_CENTER",
+                })
+
             doc.ViewZoomtofit2()
             logger.info(f"Reference point '{feature_name}' created at face center")
-            return f"✓ Reference point '{feature_name}' created at face center"
+            return self._json_result(f"✓ Reference point '{feature_name}' created at face center", id=ref_id, type="ref_point")
 
         elif point_type == "ON_EDGE":
             edge = args.get("edge")
@@ -465,9 +521,15 @@ class ReferenceGeometryTools:
                 raise Exception("Failed to create reference point on edge")
 
             feature_name = feature.Name
+            ref_id = None
+            if self.tracker:
+                ref_id = self.tracker.register_ref_geometry(feature_name, "point", parameters={
+                    "method": "ON_EDGE",
+                })
+
             doc.ViewZoomtofit2()
             logger.info(f"Reference point '{feature_name}' created on edge")
-            return f"✓ Reference point '{feature_name}' created on edge"
+            return self._json_result(f"✓ Reference point '{feature_name}' created on edge", id=ref_id, type="ref_point")
 
         else:
             raise Exception(f"Unknown point type: {point_type}")
@@ -506,6 +568,12 @@ class ReferenceGeometryTools:
             raise Exception("Failed to create coordinate system. Verify origin vertex selection.")
 
         feature_name = feature.Name
+        ref_id = None
+        if self.tracker:
+            ref_id = self.tracker.register_ref_geometry(feature_name, "coordinate_system", parameters={
+                "origin": origin,
+            })
+
         doc.ViewZoomtofit2()
         logger.info(f"Coordinate system '{feature_name}' created at ({origin['x']}, {origin['y']}, {origin['z']}) mm")
-        return f"✓ Coordinate system '{feature_name}' created at ({origin['x']}, {origin['y']}, {origin['z']}) mm"
+        return self._json_result(f"✓ Coordinate system '{feature_name}' created at ({origin['x']}, {origin['y']}, {origin['z']}) mm", id=ref_id, type="coordinate_system")

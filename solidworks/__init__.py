@@ -3,6 +3,7 @@ SolidWorks MCP Module
 """
 
 from .connection import SolidWorksConnection
+from .state_tracker import StateTracker
 from .sketching import SketchingTools
 from .modeling import ModelingTools
 from .features import FeatureTools
@@ -12,9 +13,11 @@ from .patterns import PatternTools
 from .hole_features import HoleFeatureTools
 from .reference_geometry import ReferenceGeometryTools
 from .geometry_query import GeometryQueryTools
+from .state_query import StateQueryTools
 
 __all__ = [
     'SolidWorksConnection',
+    'StateTracker',
     'SketchingTools',
     'ModelingTools',
     'FeatureTools',
@@ -24,4 +27,5 @@ __all__ = [
     'HoleFeatureTools',
     'ReferenceGeometryTools',
     'GeometryQueryTools',
+    'StateQueryTools',
 ]
