@@ -1266,9 +1266,6 @@ class SketchingTools:
             sm.DisplayWhenAdded = True
             dismiss_thread.join(timeout=2)
 
-        if "value" in args:
-            doc.ForceRebuild3(True)
-
         logger.info(result_msg)
         return f"✓ {result_msg}"
 
@@ -1303,7 +1300,6 @@ class SketchingTools:
         system_value, unit_label = self._convert_dimension_value(dim_display, args["value"])
         dim.SetSystemValue3(system_value, 2, "")
         doc.ClearSelection2(True)
-        doc.ForceRebuild3(True)
 
         logger.info(f"Dimension value set to {args['value']}{unit_label} at ({args['dimX']}, {args['dimY']})")
         return f"✓ Dimension value set to {args['value']}{unit_label}"
