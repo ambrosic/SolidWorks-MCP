@@ -17,15 +17,16 @@ This MCP server bridges Claude AI with SolidWorks, allowing you to create 3D CAD
 ## Requirements
 
 - **Windows OS** (SolidWorks only runs on Windows)
-- **SolidWorks 2022 or later** (tested on SolidWorks 2024)
+- **SolidWorks 2022 or later** (tested on SolidWorks 2025)
 - **Python 3.8+**
 - **Claude Desktop App**
 
 ## Installation
 
 ### 1. Clone the Repository
+If I were you, I would put this somewhere that isn't a network drive...
 ```bash
-git clone https://github.com/yourusername/solidworks-mcp.git
+git clone https://github.com/ambrosic/solidworks-mcp.git
 cd solidworks-mcp
 ```
 
@@ -34,15 +35,12 @@ cd solidworks-mcp
 pip install -r requirements.txt
 ```
 
-**requirements.txt:**
-```
-mcp>=0.9.0
-pywin32>=306
-```
 
 ### 3. Configure Claude Desktop
 
 Add the server to your Claude Desktop configuration file:
+
+
 
 **Location:** `%APPDATA%\Claude\claude_desktop_config.json`
 ```json
@@ -96,11 +94,67 @@ The MCP server provides these tools to Claude:
 
 | Tool | Description |
 |------|-------------|
-| `solidworks_create_sketch` | Create a new sketch on Front, Top, or Right plane |
-| `solidworks_sketch_rectangle` | Draw a rectangle with specified corner coordinates |
-| `solidworks_sketch_circle` | Draw a circle with center point and radius |
-| `solidworks_create_extrusion` | Extrude the current sketch to create a 3D feature |
-| `solidworks_exit_sketch` | Exit sketch editing mode |
+| **Modeling** | |
+| `new_part` | Create a new part document |
+| `create_extrusion` | Extrude a sketch into a 3D feature with optional end condition (BLIND or THROUGH_ALL) |
+| `create_cut_extrusion` | Cut material by extruding a sketch |
+| `get_mass_properties` | Retrieve mass, volume, and center of mass |
+| `list_features` | List all features in the active body |
+| **Sketch Tools** | |
+| `create_sketch` | Create a new sketch on Front, Top, Right, or custom reference plane |
+| `exit_sketch` | Exit sketch editing mode and return sketch name |
+| `sketch_rectangle` | Draw a rectangle with optional positioning (absolute, relative, or spacing-based) |
+| `sketch_circle` | Draw a circle with center and radius |
+| `sketch_line` | Draw a line between two points |
+| `sketch_centerline` | Draw a centerline (for revolve operations) |
+| `sketch_arc` | Draw an arc (3-point or center-point mode) |
+| `sketch_spline` | Draw a spline through multiple points |
+| `sketch_ellipse` | Draw an ellipse with center and axes |
+| `sketch_polygon` | Draw a regular polygon with center, radius, and side count |
+| `sketch_slot` | Draw a rounded slot (rectangle with semicircular ends) |
+| `sketch_point` | Add a point at specified coordinates |
+| `sketch_text` | Add text to the sketch |
+| `sketch_constraint` | Apply constraints (horizontal, vertical, coincident, equal, perpendicular, parallel, tangent, etc.) |
+| `sketch_toggle_construction` | Toggle construction mode on sketch entities |
+| `get_last_shape_info` | Retrieve center, edges, and dimensions of the last drawn shape |
+| **Boss/Base Features** | |
+| `revolve` | Create a revolve feature (requires centerline in sketch) |
+| `sweep` | Create a sweep feature (profile + path sketches) |
+| `loft` | Create a loft feature (2+ profile sketches) |
+| `boundary_boss` | Create a boundary boss feature (profiles + optional guide curves) |
+| **Cut Features** | |
+| `cut_revolve` | Cut using a revolve operation |
+| `cut_sweep` | Cut using a sweep operation |
+| `cut_loft` | Cut using a loft operation |
+| `boundary_cut` | Cut using boundary surfaces |
+| **Applied Features** | |
+| `fillet` | Round edges with specified radius |
+| `chamfer` | Bevel edges with specified distance |
+| `shell` | Create a hollow shell by removing faces and adding thickness |
+| `draft` | Apply draft to faces relative to a neutral plane |
+| `rib` | Create a rib from a sketch profile |
+| `wrap` | Emboss, deboss, or scribe geometry onto a face |
+| `intersect` | Create intersection of overlapping bodies |
+| **Patterns** | |
+| `linear_pattern` | Pattern features in linear directions (1D or 2D) |
+| `circular_pattern` | Pattern features around an axis |
+| `mirror` | Mirror features across a plane |
+| **Hole Features** | |
+| `hole_wizard` | Create holes with Hole Wizard (may trigger dialog) |
+| `thread` | Add cosmetic thread to a circular edge |
+| **Reference Geometry** | |
+| `ref_plane` | Create an offset, angled, or through-point reference plane |
+| `ref_axis` | Create a reference axis from two points, cylindrical face, or edge |
+| `ref_point` | Create a reference point at coordinates, arc center, face center, or on edge |
+| `coordinate_system` | Create a coordinate system with origin and optional axis edges |
+| **Geometry Query** | |
+| `get_body_info` | Get bounding box and feature counts |
+| `get_faces` | Enumerate faces with type, area, normal, and sample points (optional filter by surface type) |
+| `get_edges` | Enumerate edges with endpoints, midpoint, and length (optional filter by edge type) |
+| `get_face_edges` | Get all edges of a specific face by coordinate |
+| `get_vertices` | Get all unique vertex coordinates in the body |
+
+**All dimensions are in millimeters (mm).** Angles are in degrees. Selection coordinates are converted to meters internally for the SolidWorks COM API.
 
 ## Testing
 
@@ -122,6 +176,7 @@ If successful, you'll see a cube in SolidWorks!
 ### SolidWorks doesn't launch
 - Ensure SolidWorks is installed and activated
 - Try launching SolidWorks manually first
+- This generally works if Solidworks is launched before Claude is.
 
 ### "Failed to connect to SolidWorks"
 - Check that SolidWorks is running
@@ -129,7 +184,7 @@ If successful, you'll see a cube in SolidWorks!
 - Verify `pywin32` is installed: `pip install pywin32`
 
 ### "No Part template found"
-- Check that SolidWorks templates exist at: `C:\ProgramData\SOLIDWORKS\SOLIDWORKS 2024\templates\`
+- Check that SolidWorks templates exist at: `C:\ProgramData\SOLIDWORKS\SOLIDWORKS <YOUR YEAR>\templates\`
 - Update the template path in `server.py` if your templates are elsewhere
 
 ### Tool errors in Claude
@@ -137,15 +192,6 @@ If successful, you'll see a cube in SolidWorks!
 - Restart Claude Desktop
 - Verify the config file path is correct
 
-## Project Structure
-```
-solidworks-mcp/
-├── server.py              # Main MCP server
-├── test_solidworks.py     # Test script
-├── requirements.txt       # Python dependencies
-├── README.md             # This file
-└── solidworks_mcp.log    # Log file (generated)
-```
 
 ## Technical Details
 
@@ -159,16 +205,20 @@ solidworks-mcp/
 - Extrusions go in the positive Z direction (unless reversed)
 
 ### Limitations
-- Currently supports basic sketches (rectangles and circles)
-- One sketch per part (creates new part for each design)
-- Limited to Boss-Extrude features
+- ~~Currently supports basic sketches (rectangles and circles)~~
+  - fixed in v0.2
+- ~~One sketch per part (creates new part for each design)~~
+  - fixed in v0.2
+- ~~Limited to Boss-Extrude features~~
+  - fixed in v0.2
+- AI Agent has minimal context about what it's doing, and is basically building half-blind 
 
 ## Future Enhancements
 
-- [ ] Additional sketch tools (lines, arcs, splines)
-- [ ] Sketch constraints and dimensions
-- [ ] Cut-Extrude features
-- [ ] Revolve, Sweep, Loft features
+- [x] Additional sketch tools (lines, arcs, splines)
+- [x] Sketch constraints and dimensions
+- [x] Cut-Extrude features
+- [x] Revolve, Sweep, Loft features
 - [ ] Assembly creation
 - [ ] Drawing generation
 - [ ] File save/export functionality
@@ -190,7 +240,7 @@ MIT License - see LICENSE file for details
 ## Support
 
 For issues and questions:
-- Open an issue on [GitHub](https://github.com/yourusername/solidworks-mcp/issues)
+- Open an issue on [GitHub](https://github.com/ambrosic/solidworks-mcp/issues)
 - Check the log file: `solidworks_mcp.log`
 
 ---
