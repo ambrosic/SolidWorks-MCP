@@ -80,7 +80,7 @@ class GeometryQueryTools:
             ),
             Tool(
                 name="solidworks_get_edges",
-                description="Enumerate all edges on the active part body. Returns each edge's type (Line/Circle/Arc/Curve), start and end vertex coordinates, a midpoint (usable for selection in fillet/chamfer/pattern direction), and length. Use the optional edgeType filter to narrow results.",
+                description="Enumerate all edges on the active part body. Returns each edge's type (Line/Circle/Arc/Curve), start and end vertex coordinates, a midpoint (usable for selection in fillet/chamfer/pattern direction), length, and whether the edge is smooth (tangent). Smooth edges (e.g., fillet boundaries) cannot be filleted or chamfered — skip them when selecting edges for those operations. Use the optional edgeType filter to narrow results.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -94,7 +94,7 @@ class GeometryQueryTools:
             ),
             Tool(
                 name="solidworks_get_face_edges",
-                description="Get detailed information about a specific face and its bounding edges. Select the face by providing a 3D point on or near it. Returns face properties and each edge's endpoints and midpoint. Use this to drill down into a face found via get_faces.",
+                description="Get detailed information about a specific face and its bounding edges. Select the face by providing a 3D point on or near it. Returns face properties and each edge's endpoints, midpoint, and smooth flag. Smooth edges (e.g., fillet boundaries) cannot be filleted or chamfered. Use this to drill down into a face found via get_faces.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -251,6 +251,62 @@ class GeometryQueryTools:
                 return "Arc"
         except Exception:
             return "Line"
+
+    def _is_edge_smooth(self, edge):
+        """Check if an edge is smooth (tangent between its two adjacent faces).
+        Smooth edges (e.g., fillet/chamfer boundaries) cannot be filleted or chamfered.
+        Returns True if smooth, False if sharp or if the check fails.
+        """
+        try:
+            faces = edge.GetTwoAdjacentFaces2  # property: array of 2 IFace2
+            if not faces or len(faces) < 2:
+                return False
+
+            # Get a point on the edge in meters
+            mid_mm = self._edge_midpoint(edge)
+            mx, my, mz = mid_mm[0] / 1000.0, mid_mm[1] / 1000.0, mid_mm[2] / 1000.0
+
+            normals = []
+            for i in range(2):
+                face = faces[i]
+                surface = face.GetSurface  # property: ISurface
+
+                # Find UV coordinates of edge point on this surface
+                closest = surface.GetClosestPointOn(mx, my, mz)  # method: (x,y,z,u,v,...)
+                u, v = closest[3], closest[4]
+
+                # Evaluate surface with 1st-order derivatives
+                ev = surface.Evaluate(u, v, 1, 1)  # method: (x,y,z, du_xyz, dv_xyz, ...)
+                du = (ev[3], ev[4], ev[5])
+                dv = (ev[6], ev[7], ev[8])
+
+                # Surface normal = du x dv
+                nx = du[1] * dv[2] - du[2] * dv[1]
+                ny = du[2] * dv[0] - du[0] * dv[2]
+                nz = du[0] * dv[1] - du[1] * dv[0]
+                mag = (nx * nx + ny * ny + nz * nz) ** 0.5
+                if mag < 1e-10:
+                    return False
+
+                # Flip normal if face sense is reversed relative to surface
+                try:
+                    if face.FaceInSurfaceSense:  # property: bool
+                        nx, ny, nz = -nx, -ny, -nz
+                except Exception:
+                    pass
+
+                normals.append((nx / mag, ny / mag, nz / mag))
+
+            # Dot product of outward normals from both adjacent faces
+            dot = (normals[0][0] * normals[1][0] +
+                   normals[0][1] * normals[1][1] +
+                   normals[0][2] * normals[1][2])
+
+            # Smooth/tangent edges have nearly parallel outward normals (dot close to 1).
+            # Sharp edges have diverging normals (dot well below 1).
+            return dot > 0.95
+        except Exception:
+            return False
 
     def _surface_type_str(self, face):
         """Get human-readable surface type string."""
@@ -485,6 +541,7 @@ class GeometryQueryTools:
                 "edgeType": etype,
                 "midpoint": {"x": round(mid[0], 2), "y": round(mid[1], 2), "z": round(mid[2], 2)},
                 "length": round(length, 2),
+                "smooth": self._is_edge_smooth(edge),
             }
             if endpoints:
                 s, ep = endpoints
@@ -550,6 +607,7 @@ class GeometryQueryTools:
                     "edgeType": etype,
                     "midpoint": {"x": round(mid[0], 2), "y": round(mid[1], 2), "z": round(mid[2], 2)},
                     "length": round(length, 2),
+                    "smooth": self._is_edge_smooth(edge),
                 }
                 if endpoints:
                     s, ep = endpoints
