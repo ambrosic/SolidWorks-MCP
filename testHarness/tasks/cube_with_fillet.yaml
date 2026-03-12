@@ -1,0 +1,42 @@
+task_id: cube_with_fillet
+description: >
+  Create a 100mm cube (100mm x 100mm x 100mm), then apply a 5mm fillet
+  to one edge. Create the sketch on the Front plane, extrude 100mm,
+  then use the geometry query tools to find edge coordinates before
+  applying the fillet.
+difficulty: basic
+
+required_tools:
+  - solidworks_new_part
+  - solidworks_create_sketch
+  - solidworks_sketch_rectangle
+  - solidworks_create_extrusion
+  - solidworks_get_edges
+  - solidworks_fillet
+
+forbidden_tools: []
+
+ordering_constraints:
+  - before: solidworks_new_part
+    after: solidworks_create_sketch
+    description: "must create part before sketch"
+  - before: solidworks_create_extrusion
+    after: solidworks_get_edges
+    description: "body must exist before querying edges"
+  - before: solidworks_get_edges
+    after: solidworks_fillet
+    description: "should query edges before attempting fillet"
+  - before: solidworks_create_extrusion
+    after: solidworks_fillet
+    description: "body must exist before filleting"
+
+max_expected_calls: 10
+
+geometry:
+  # Volume of 100mm cube = 1,000,000 mm3
+  # Minus one 5mm fillet on one edge (small reduction)
+  # Approximate: ~999,000 +/- 1000
+  volume_mm3: 999000.0
+  volume_tolerance: 2000.0
+
+timeout_seconds: 180

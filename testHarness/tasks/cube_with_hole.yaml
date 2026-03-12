@@ -1,0 +1,41 @@
+task_id: cube_with_hole
+description: >
+  Create a 100mm cube, then cut a circular through-hole with a 20mm
+  diameter through the center of the top face. Create the cube sketch
+  on the Front plane, extrude 100mm. Then create a new sketch on the
+  top face, draw a circle with 10mm radius centered at (50, 50), and
+  cut-extrude it through all.
+difficulty: basic
+
+required_tools:
+  - solidworks_new_part
+  - solidworks_create_sketch
+  - solidworks_sketch_rectangle
+  - solidworks_create_extrusion
+  - solidworks_sketch_circle
+  - solidworks_create_cut_extrusion
+
+forbidden_tools: []
+
+ordering_constraints:
+  - before: solidworks_new_part
+    after: solidworks_create_sketch
+    description: "must create part before sketch"
+  - before: solidworks_sketch_rectangle
+    after: solidworks_create_extrusion
+    description: "must draw rectangle before extruding"
+  - before: solidworks_create_extrusion
+    after: solidworks_sketch_circle
+    description: "body must exist before drawing hole sketch"
+  - before: solidworks_sketch_circle
+    after: solidworks_create_cut_extrusion
+    description: "must draw circle before cutting"
+
+max_expected_calls: 12
+
+geometry:
+  # Volume = 100^3 - pi * 10^2 * 100 = 1,000,000 - 31,415.9 = 968,584.1
+  volume_mm3: 968584.0
+  volume_tolerance: 500.0
+
+timeout_seconds: 180

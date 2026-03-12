@@ -5,3 +5,7 @@ solidworks/__pycache__/*
 solidworks_mcp.log
 *.log
 solidworks_mcp.log
+testHarness/results/*
+testHarness/__pycache__/*
+testHarness/graders/__pycache__/*
+testHarness/llm/__pycache__/*

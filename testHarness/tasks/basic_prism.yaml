@@ -1,0 +1,36 @@
+task_id: basic_prism
+description: >
+  Create a rectangular prism (box) with dimensions 80mm wide, 40mm tall,
+  and 25mm deep. Create the sketch on the Front plane with the rectangle
+  centered at the origin, then extrude it 25mm.
+difficulty: basic
+
+required_tools:
+  - solidworks_new_part
+  - solidworks_create_sketch
+  - solidworks_sketch_rectangle
+  - solidworks_create_extrusion
+
+forbidden_tools: []
+
+ordering_constraints:
+  - before: solidworks_new_part
+    after: solidworks_create_sketch
+    description: "must create part before sketch"
+  - before: solidworks_create_sketch
+    after: solidworks_sketch_rectangle
+    description: "must create sketch before drawing"
+  - before: solidworks_sketch_rectangle
+    after: solidworks_create_extrusion
+    description: "must draw rectangle before extruding"
+
+max_expected_calls: 6
+
+geometry:
+  volume_mm3: 80000.0
+  volume_tolerance: 100.0
+  face_count: 6
+  edge_count: 12
+  vertex_count: 8
+
+timeout_seconds: 120
