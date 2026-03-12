@@ -6,6 +6,7 @@ NOTE: Advanced Hole and Stud are deferred - these are wizard-driven UI features
 that are extremely unlikely to work via COM automation without blocking dialogs.
 """
 
+import json
 import logging
 from mcp.types import Tool
 from . import selection_helpers as sel
@@ -16,8 +17,14 @@ logger = logging.getLogger(__name__)
 class HoleFeatureTools:
     """Hole and thread feature operations"""
 
-    def __init__(self, connection):
+    def __init__(self, connection, tracker=None):
         self.connection = connection
+        self.tracker = tracker
+
+    def _json_result(self, result, **extra):
+        d = {"result": result}
+        d.update(extra)
+        return json.dumps(d)
 
     def get_tool_definitions(self) -> list[Tool]:
         return [
@@ -205,9 +212,17 @@ class HoleFeatureTools:
             )
 
         feature_name = feature.Name
+        feature_id = None
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "hole_wizard", parameters={
+                "hole_type": hole_type,
+                "standard": standard,
+                "endCondition": end_condition,
+                "depth": args.get("depth", 10),
+            })
         doc.ViewZoomtofit2()
         logger.info(f"Hole Wizard '{feature_name}' created: {hole_type}")
-        return f"✓ Hole Wizard '{feature_name}' {hole_type} hole created"
+        return self._json_result(f"✓ Hole Wizard '{feature_name}' {hole_type} hole created", id=feature_id, type="hole_wizard")
 
     def thread(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -235,6 +250,12 @@ class HoleFeatureTools:
             raise Exception("Failed to create cosmetic thread. Ensure a circular edge is selected.")
 
         feature_name = feature.Name
+        feature_id = None
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "thread", parameters={
+                "depth": args["depth"],
+                "diameter": args["diameter"],
+            })
         doc.ViewZoomtofit2()
         logger.info(f"Cosmetic thread '{feature_name}' created: depth={args['depth']}mm, diameter={args['diameter']}mm")
-        return f"✓ Cosmetic thread '{feature_name}' created: {args['depth']}mm deep, {args['diameter']}mm diameter"
+        return self._json_result(f"✓ Cosmetic thread '{feature_name}' created: {args['depth']}mm deep, {args['diameter']}mm diameter", id=feature_id, type="thread")

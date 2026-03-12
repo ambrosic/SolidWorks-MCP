@@ -13,6 +13,7 @@ COM binding notes (pywin32 late binding with SolidWorks 2025):
     surface.Evaluate(u,v,0,0), curve.Evaluate2(t,0)
 """
 
+import json
 import logging
 from mcp.types import Tool
 from . import selection_helpers as sel
@@ -48,6 +49,11 @@ class GeometryQueryTools:
     def __init__(self, connection):
         self.connection = connection
 
+    def _json_result(self, result, **extra):
+        d = {"result": result}
+        d.update(extra)
+        return json.dumps(d)
+
     def get_tool_definitions(self) -> list[Tool]:
         return [
             Tool(
@@ -74,7 +80,7 @@ class GeometryQueryTools:
             ),
             Tool(
                 name="solidworks_get_edges",
-                description="Enumerate all edges on the active part body. Returns each edge's type (Line/Circle/Arc/Curve), start and end vertex coordinates, a midpoint (usable for selection in fillet/chamfer/pattern direction), and length. Use the optional edgeType filter to narrow results.",
+                description="Enumerate all edges on the active part body. Returns each edge's type (Line/Circle/Arc/Curve), start and end vertex coordinates, a midpoint (usable for selection in fillet/chamfer/pattern direction), length, and whether the edge is smooth (tangent). Smooth edges (e.g., fillet boundaries) cannot be filleted or chamfered — skip them when selecting edges for those operations. Use the optional edgeType filter to narrow results.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -88,7 +94,7 @@ class GeometryQueryTools:
             ),
             Tool(
                 name="solidworks_get_face_edges",
-                description="Get detailed information about a specific face and its bounding edges. Select the face by providing a 3D point on or near it. Returns face properties and each edge's endpoints and midpoint. Use this to drill down into a face found via get_faces.",
+                description="Get detailed information about a specific face and its bounding edges. Select the face by providing a 3D point on or near it. Returns face properties and each edge's endpoints, midpoint, and smooth flag. Smooth edges (e.g., fillet boundaries) cannot be filleted or chamfered. Use this to drill down into a face found via get_faces.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -246,6 +252,62 @@ class GeometryQueryTools:
         except Exception:
             return "Line"
 
+    def _is_edge_smooth(self, edge):
+        """Check if an edge is smooth (tangent between its two adjacent faces).
+        Smooth edges (e.g., fillet/chamfer boundaries) cannot be filleted or chamfered.
+        Returns True if smooth, False if sharp or if the check fails.
+        """
+        try:
+            faces = edge.GetTwoAdjacentFaces2  # property: array of 2 IFace2
+            if not faces or len(faces) < 2:
+                return False
+
+            # Get a point on the edge in meters
+            mid_mm = self._edge_midpoint(edge)
+            mx, my, mz = mid_mm[0] / 1000.0, mid_mm[1] / 1000.0, mid_mm[2] / 1000.0
+
+            normals = []
+            for i in range(2):
+                face = faces[i]
+                surface = face.GetSurface  # property: ISurface
+
+                # Find UV coordinates of edge point on this surface
+                closest = surface.GetClosestPointOn(mx, my, mz)  # method: (x,y,z,u,v,...)
+                u, v = closest[3], closest[4]
+
+                # Evaluate surface with 1st-order derivatives
+                ev = surface.Evaluate(u, v, 1, 1)  # method: (x,y,z, du_xyz, dv_xyz, ...)
+                du = (ev[3], ev[4], ev[5])
+                dv = (ev[6], ev[7], ev[8])
+
+                # Surface normal = du x dv
+                nx = du[1] * dv[2] - du[2] * dv[1]
+                ny = du[2] * dv[0] - du[0] * dv[2]
+                nz = du[0] * dv[1] - du[1] * dv[0]
+                mag = (nx * nx + ny * ny + nz * nz) ** 0.5
+                if mag < 1e-10:
+                    return False
+
+                # Flip normal if face sense is reversed relative to surface
+                try:
+                    if face.FaceInSurfaceSense:  # property: bool
+                        nx, ny, nz = -nx, -ny, -nz
+                except Exception:
+                    pass
+
+                normals.append((nx / mag, ny / mag, nz / mag))
+
+            # Dot product of outward normals from both adjacent faces
+            dot = (normals[0][0] * normals[1][0] +
+                   normals[0][1] * normals[1][1] +
+                   normals[0][2] * normals[1][2])
+
+            # Smooth/tangent edges have nearly parallel outward normals (dot close to 1).
+            # Sharp edges have diverging normals (dot well below 1).
+            return dot > 0.95
+        except Exception:
+            return False
+
     def _surface_type_str(self, face):
         """Get human-readable surface type string."""
         try:
@@ -373,15 +435,14 @@ class GeometryQueryTools:
         size_y = bb_max[1] - bb_min[1]
         size_z = bb_max[2] - bb_min[2]
 
-        result = "✓ Body Info:\n"
-        result += f"  Bounding Box: ({bb_min[0]:.2f}, {bb_min[1]:.2f}, {bb_min[2]:.2f}) to ({bb_max[0]:.2f}, {bb_max[1]:.2f}, {bb_max[2]:.2f}) mm\n"
-        result += f"  Size: {size_x:.2f} x {size_y:.2f} x {size_z:.2f} mm\n"
-        result += f"  Faces: {total_faces}\n"
-        result += f"  Edges: {total_edges}\n"
-        result += f"  Vertices: {total_vertices}"
-
         logger.info(f"Body info: {total_faces} faces, {total_edges} edges, {total_vertices} vertices")
-        return result
+        return self._json_result("✓ Body Info", type="body_info",
+            boundingBox={
+                "min": {"x": round(bb_min[0], 2), "y": round(bb_min[1], 2), "z": round(bb_min[2], 2)},
+                "max": {"x": round(bb_max[0], 2), "y": round(bb_max[1], 2), "z": round(bb_max[2], 2)},
+            },
+            size={"x": round(size_x, 2), "y": round(size_y, 2), "z": round(size_z, 2)},
+            faces=total_faces, edges=total_edges, vertices=total_vertices)
 
     def get_faces(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -404,31 +465,35 @@ class GeometryQueryTools:
 
         if not all_faces:
             filter_note = f" (filter: {filter_type})" if filter_type else ""
-            return f"✓ No faces found{filter_note}."
+            return self._json_result(f"✓ No faces found{filter_note}.", type="faces", faces=[])
 
-        lines = [f"✓ Faces ({len(all_faces)} total):"]
+        face_list = []
         for idx, face in enumerate(all_faces):
             type_str = self._surface_type_str(face)
             try:
-                area_mm2 = face.GetArea * 1e6  # property: area in m^2
+                area_mm2 = face.GetArea * 1e6
             except Exception:
                 area_mm2 = 0.0
             details = self._surface_details(face)
             sample = self._face_sample_point(face)
-            sample_str = f"({sample[0]:.2f}, {sample[1]:.2f}, {sample[2]:.2f})"
             try:
-                edge_count = face.GetEdgeCount  # property: int
+                edge_count = face.GetEdgeCount
             except Exception:
                 edge_count = 0
 
-            detail_part = f" | {details}" if details else ""
-            lines.append(
-                f"  [{idx}] {type_str} face | area={area_mm2:.2f} mm^2{detail_part} | point={sample_str} | edges={edge_count}"
-            )
+            face_data = {
+                "index": idx,
+                "surfaceType": type_str,
+                "area": round(area_mm2, 2),
+                "point": {"x": round(sample[0], 2), "y": round(sample[1], 2), "z": round(sample[2], 2)},
+                "edges": edge_count,
+            }
+            if details:
+                face_data["details"] = details
+            face_list.append(face_data)
 
-        result = "\n".join(lines)
         logger.info(f"get_faces: returned {len(all_faces)} faces")
-        return result
+        return self._json_result(f"✓ {len(all_faces)} faces", type="faces", faces=face_list)
 
     def get_edges(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -464,15 +529,30 @@ class GeometryQueryTools:
 
         if not edge_data:
             filter_note = f" (filter: {filter_type})" if filter_type else ""
-            return f"✓ No edges found{filter_note}."
+            return self._json_result(f"✓ No edges found{filter_note}.", type="edges", edges=[])
 
-        lines = [f"✓ Edges ({len(edge_data)} total):"]
+        edge_list = []
         for idx, (edge, etype) in enumerate(edge_data):
-            lines.append(self._format_edge_line(idx, edge))
+            endpoints = self._edge_endpoints(edge)
+            mid = self._edge_midpoint(edge)
+            length = self._edge_length(edge)
+            e = {
+                "index": idx,
+                "edgeType": etype,
+                "midpoint": {"x": round(mid[0], 2), "y": round(mid[1], 2), "z": round(mid[2], 2)},
+                "length": round(length, 2),
+                "smooth": self._is_edge_smooth(edge),
+            }
+            if endpoints:
+                s, ep = endpoints
+                e["start"] = {"x": round(s[0], 2), "y": round(s[1], 2), "z": round(s[2], 2)}
+                e["end"] = {"x": round(ep[0], 2), "y": round(ep[1], 2), "z": round(ep[2], 2)}
+            else:
+                e["closed"] = True
+            edge_list.append(e)
 
-        result = "\n".join(lines)
         logger.info(f"get_edges: returned {len(edge_data)} edges")
-        return result
+        return self._json_result(f"✓ {len(edge_data)} edges", type="edges", edges=edge_list)
 
     def get_face_edges(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -505,29 +585,43 @@ class GeometryQueryTools:
         sample = self._face_sample_point(face)
         sample_str = f"({sample[0]:.2f}, {sample[1]:.2f}, {sample[2]:.2f})"
 
-        lines = [
-            f"✓ Face at ({x:.2f}, {y:.2f}, {z:.2f}):",
-            f"  Type: {type_str}",
-            f"  Area: {area_mm2:.2f} mm^2",
-        ]
+        face_info = {
+            "surfaceType": type_str,
+            "area": round(area_mm2, 2),
+            "point": {"x": round(sample[0], 2), "y": round(sample[1], 2), "z": round(sample[2], 2)},
+        }
         if details:
-            lines.append(f"  {details}")
-        lines.append(f"  Sample point: {sample_str}")
+            face_info["details"] = details
 
         # Face edges
         edges = face.GetEdges  # property: tuple of edge COM objects
+        edge_list = []
         if edges:
-            lines.append(f"  Edges ({len(edges)}):")
             for idx, edge in enumerate(edges):
-                lines.append(f"  {self._format_edge_line(idx, edge)}")
-        else:
-            lines.append("  Edges: 0")
+                endpoints = self._edge_endpoints(edge)
+                mid = self._edge_midpoint(edge)
+                length = self._edge_length(edge)
+                etype = self._edge_type_str(edge)
+                e = {
+                    "index": idx,
+                    "edgeType": etype,
+                    "midpoint": {"x": round(mid[0], 2), "y": round(mid[1], 2), "z": round(mid[2], 2)},
+                    "length": round(length, 2),
+                    "smooth": self._is_edge_smooth(edge),
+                }
+                if endpoints:
+                    s, ep = endpoints
+                    e["start"] = {"x": round(s[0], 2), "y": round(s[1], 2), "z": round(s[2], 2)}
+                    e["end"] = {"x": round(ep[0], 2), "y": round(ep[1], 2), "z": round(ep[2], 2)}
+                else:
+                    e["closed"] = True
+                edge_list.append(e)
 
         doc.ClearSelection2(True)
 
-        result = "\n".join(lines)
-        logger.info(f"get_face_edges at ({x}, {y}, {z}): {type_str}, {len(edges) if edges else 0} edges")
-        return result
+        face_info["edges"] = edge_list
+        logger.info(f"get_face_edges at ({x}, {y}, {z}): {type_str}, {len(edge_list)} edges")
+        return self._json_result(f"✓ Face at ({x:.2f}, {y:.2f}, {z:.2f})", type="face_edges", face=face_info)
 
     def get_vertices(self) -> str:
         doc = self.connection.get_active_doc()
@@ -551,12 +645,12 @@ class GeometryQueryTools:
         unique.sort(key=lambda p: (p[0], p[1], p[2]))
 
         if not unique:
-            return "✓ No vertices found (model may only have closed-edge geometry)."
+            return self._json_result("✓ No vertices found", type="vertices", vertices=[])
 
-        lines = [f"✓ Vertices ({len(unique)} total):"]
-        for idx, pt in enumerate(unique):
-            lines.append(f"  [{idx}] ({pt[0]:.2f}, {pt[1]:.2f}, {pt[2]:.2f})")
+        vertex_list = [
+            {"index": idx, "x": round(pt[0], 2), "y": round(pt[1], 2), "z": round(pt[2], 2)}
+            for idx, pt in enumerate(unique)
+        ]
 
-        result = "\n".join(lines)
         logger.info(f"get_vertices: {len(unique)} unique vertices")
-        return result
+        return self._json_result(f"✓ {len(unique)} vertices", type="vertices", vertices=vertex_list)

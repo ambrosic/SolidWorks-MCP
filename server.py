@@ -15,6 +15,7 @@ import pythoncom
 
 from solidworks import (
     SolidWorksConnection,
+    StateTracker,
     SketchingTools,
     ModelingTools,
     FeatureTools,
@@ -24,6 +25,7 @@ from solidworks import (
     HoleFeatureTools,
     ReferenceGeometryTools,
     GeometryQueryTools,
+    StateQueryTools,
 )
 
 # Configure logging
@@ -45,17 +47,19 @@ class SolidWorksMCPServer:
     def __init__(self):
         self.server = Server("solidworks-mcp")
 
-        # Initialize connection and tool modules
+        # Initialize connection, state tracker, and tool modules
         self.connection = SolidWorksConnection()
-        self.sketching = SketchingTools(self.connection)
-        self.modeling = ModelingTools(self.connection)
-        self.features = FeatureTools(self.connection)
-        self.cut_features = CutFeatureTools(self.connection)
-        self.applied_features = AppliedFeatureTools(self.connection)
-        self.patterns = PatternTools(self.connection)
-        self.hole_features = HoleFeatureTools(self.connection)
-        self.reference_geometry = ReferenceGeometryTools(self.connection)
+        self.tracker = StateTracker()
+        self.sketching = SketchingTools(self.connection, self.tracker)
+        self.modeling = ModelingTools(self.connection, self.tracker)
+        self.features = FeatureTools(self.connection, self.tracker)
+        self.cut_features = CutFeatureTools(self.connection, self.tracker)
+        self.applied_features = AppliedFeatureTools(self.connection, self.tracker)
+        self.patterns = PatternTools(self.connection, self.tracker)
+        self.hole_features = HoleFeatureTools(self.connection, self.tracker)
+        self.reference_geometry = ReferenceGeometryTools(self.connection, self.tracker)
         self.geometry_query = GeometryQueryTools(self.connection)
+        self.state_query = StateQueryTools(self.tracker)
 
         # All modules (order matters for tool listing)
         self._modules = [
@@ -68,6 +72,7 @@ class SolidWorksMCPServer:
             self.hole_features,
             self.reference_geometry,
             self.geometry_query,
+            self.state_query,
         ]
 
         # Build dispatch map: tool_name -> module

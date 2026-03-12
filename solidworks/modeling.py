@@ -3,6 +3,7 @@ SolidWorks Modeling Tools
 Handles 3D feature creation like extrusions, revolves, etc.
 """
 
+import json
 import logging
 from mcp.types import Tool
 from typing import Any
@@ -13,9 +14,15 @@ logger = logging.getLogger(__name__)
 class ModelingTools:
     """3D modeling feature operations"""
     
-    def __init__(self, connection):
+    def __init__(self, connection, tracker=None):
         self.connection = connection
+        self.tracker = tracker
     
+    def _json_result(self, result, **extra):
+        d = {"result": result}
+        d.update(extra)
+        return json.dumps(d)
+
     def get_tool_definitions(self) -> list[Tool]:
         """Define all modeling tools"""
         return [
@@ -137,8 +144,12 @@ class ModelingTools:
             sketching_tools.sketch_counter = 0
             sketching_tools.current_sketch_name = None
         
+        # Reset state tracker
+        if self.tracker:
+            self.tracker.reset()
+        
         logger.info("New part document created")
-        return "✓ New part document created and ready"
+        return self._json_result("✓ New part document created and ready", type="new_part")
     
     def create_extrusion(self, args: dict, sketching_tools) -> str:
         """Create extrusion from current sketch"""
@@ -203,8 +214,17 @@ class ModelingTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
 
+        feature_id = ""
+        if self.tracker:
+            sketch_name = (sketching_tools.current_sketch_name if sketching_tools else None) or self._get_latest_sketch_name(doc)
+            feature_id = self.tracker.register_feature(
+                sw_name=feature_name, feature_type="extrusion",
+                source_sketch=f"sketch:{sketch_name}" if sketch_name else None,
+                parameters={"depth": args["depth"], "endCondition": end_condition}
+            )
+
         logger.info(f"Extrusion '{feature_name}' created: {args['depth']}mm ({end_condition})")
-        return f"✓ Extrusion '{feature_name}' {args['depth']}mm created ({end_condition})"
+        return self._json_result(f"✓ Extrusion '{feature_name}' {args['depth']}mm created ({end_condition})", id=feature_id, type="extrusion")
 
     def create_cut_extrusion(self, args: dict, sketching_tools) -> str:
         """Create cut-extrusion (removes material) from current sketch"""
@@ -277,8 +297,17 @@ class ModelingTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
 
+        feature_id = ""
+        if self.tracker:
+            sketch_name = (sketching_tools.current_sketch_name if sketching_tools else None) or self._get_latest_sketch_name(doc)
+            feature_id = self.tracker.register_feature(
+                sw_name=feature_name, feature_type="cut_extrusion",
+                source_sketch=f"sketch:{sketch_name}" if sketch_name else None,
+                parameters={"depth": args["depth"], "endCondition": end_condition}
+            )
+
         logger.info(f"Cut-extrusion '{feature_name}' created: {args['depth']}mm ({end_condition})")
-        return f"✓ Cut-extrusion '{feature_name}' {args['depth']}mm created ({end_condition})"
+        return self._json_result(f"✓ Cut-extrusion '{feature_name}' {args['depth']}mm created ({end_condition})", id=feature_id, type="cut_extrusion")
 
     def get_mass_properties(self) -> str:
         """Evaluate mass properties of the active part"""
@@ -326,7 +355,7 @@ class ModelingTools:
         result += f"    Ixy={ixy:.4f}  Ixz={ixz:.4f}  Iyz={iyz:.4f}"
 
         logger.info(f"Mass properties: mass={mass_kg:.6f}kg, volume={volume_mm3:.2f}mm^3")
-        return result
+        return self._json_result(result, type="mass_properties")
 
     def list_features(self) -> str:
         """List all features in the feature tree"""
@@ -345,7 +374,12 @@ class ModelingTools:
             # Skip origin-level items for cleaner output
             if type_name in ("OriginProfileFeature", "MaterialFolder", "SensorFolder"):
                 continue
-            result += f"  {name} ({type_name})\n"
+            tracked_info = ""
+            if self.tracker:
+                tid = self.tracker.get_id_by_sw_name(name)
+                if tid:
+                    tracked_info = f" [id={tid}]"
+            result += f"  {name} ({type_name}){tracked_info}\n"
 
         logger.info(f"Listed {len(features)} features")
-        return result
+        return self._json_result(result, type="feature_list")

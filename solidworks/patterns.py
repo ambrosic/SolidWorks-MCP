@@ -3,6 +3,7 @@ SolidWorks Pattern and Mirror Tools
 Linear Pattern, Circular Pattern, Mirror
 """
 
+import json
 import logging
 import math
 from mcp.types import Tool
@@ -14,8 +15,22 @@ logger = logging.getLogger(__name__)
 class PatternTools:
     """Pattern and mirror feature operations"""
 
-    def __init__(self, connection):
+    def __init__(self, connection, tracker=None):
         self.connection = connection
+        self.tracker = tracker
+
+
+    def _json_result(self, result, **extra):
+        d = {"result": result}
+        d.update(extra)
+        return json.dumps(d)
+
+    def _resolve_name(self, name_or_id):
+        if self.tracker and name_or_id.startswith(("feat:", "sketch:", "ref:")):
+            return self.tracker.resolve_name(name_or_id)
+        elif self.tracker:
+            logger.warning(f"Raw SolidWorks name '{name_or_id}' used — consider using tracked ID instead")
+        return name_or_id
 
     def get_tool_definitions(self) -> list[Tool]:
         return [
@@ -171,7 +186,7 @@ class PatternTools:
         if not doc:
             raise Exception("No active document")
 
-        features = args["features"]
+        features = [self._resolve_name(n) for n in args["features"]]
         dir1 = args["direction1"]
         spacing1_m = args["spacing1"] / 1000.0
         count1 = args["count1"]
@@ -224,15 +239,24 @@ class PatternTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         total = count1 * count2 if use_dir2 else count1
+
+        # Register with tracker
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "linear_pattern", parameters={
+                "spacing1": args["spacing1"], "count1": count1,
+            })
+
         logger.info(f"Linear pattern '{feature_name}' created: {total} instances")
-        return f"✓ Linear pattern '{feature_name}' created: {count1}x{count2 if use_dir2 else 1} = {total} instances"
+        result = f"✓ Linear pattern '{feature_name}' created: {count1}x{count2 if use_dir2 else 1} = {total} instances"
+        return self._json_result(result, id=feature_id, type="linear_pattern")
 
     def circular_pattern(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
         if not doc:
             raise Exception("No active document")
 
-        features = args["features"]
+        features = [self._resolve_name(n) for n in args["features"]]
         count = args["count"]
         angle_deg = args.get("angle", 360)
         angle_rad = math.radians(angle_deg)
@@ -277,15 +301,24 @@ class PatternTools:
 
         feature_name = feature.Name
         doc.ViewZoomtofit2()
+
+        # Register with tracker
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "circular_pattern", parameters={
+                "count": count, "angle": angle_deg,
+            })
+
         logger.info(f"Circular pattern '{feature_name}' created: {count} instances over {angle_deg}°")
-        return f"✓ Circular pattern '{feature_name}' created: {count} instances over {angle_deg}°"
+        result = f"✓ Circular pattern '{feature_name}' created: {count} instances over {angle_deg}°"
+        return self._json_result(result, id=feature_id, type="circular_pattern")
 
     def mirror(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
         if not doc:
             raise Exception("No active document")
 
-        features = args["features"]
+        features = [self._resolve_name(n) for n in args["features"]]
         mirror_plane = args.get("mirrorPlane")
         mirror_face = args.get("mirrorFace")
 
@@ -321,5 +354,12 @@ class PatternTools:
 
         feature_name = feature.Name
         doc.ViewZoomtofit2()
+
+        # Register with tracker
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "mirror")
+
         logger.info(f"Mirror '{feature_name}' created for {len(features)} feature(s)")
-        return f"✓ Mirror '{feature_name}' created for {len(features)} feature(s)"
+        result = f"✓ Mirror '{feature_name}' created for {len(features)} feature(s)"
+        return self._json_result(result, id=feature_id, type="mirror")

@@ -3,6 +3,7 @@ SolidWorks Sketching Tools
 Handles sketch creation and drawing operations with spatial tracking
 """
 
+import json
 import logging
 import math
 import threading
@@ -41,14 +42,26 @@ def dismiss_modify_dialog(delay=0.5, max_wait=10.0):
 class SketchingTools:
     """Sketch creation and drawing operations with spatial awareness"""
     
-    def __init__(self, connection):
+    def __init__(self, connection, tracker=None):
         self.connection = connection
+        self.tracker = tracker
         self.current_sketch_name = None
         self.sketch_counter = 0
-        
+
         # Spatial tracking - stores info about created shapes
         self.created_shapes = []  # List of shape info
         self.last_shape = None    # Most recent shape for "relative to last" positioning
+
+    def _json_result(self, result, **extra):
+        d = {"result": result}
+        d.update(extra)
+        return json.dumps(d)
+
+    def _sync_spatial(self):
+        """Sync spatial tracking from tracker."""
+        if self.tracker:
+            self.last_shape = self.tracker.last_shape
+            self.created_shapes = self.tracker.created_shapes
     
     def get_tool_definitions(self) -> list[Tool]:
         """Define all sketching tools"""
@@ -676,36 +689,44 @@ class SketchingTools:
         self.sketch_counter += 1
         self.current_sketch_name = f"Sketch{self.sketch_counter}"
 
+        sketch_id = ""
+        if self.tracker:
+            sketch_id = self.tracker.register_sketch(self.current_sketch_name, location)
+            self._sync_spatial()
+
         logger.info(f"Sketch created: {self.current_sketch_name} on {location}")
 
         if created_new:
-            return f"✓ New part created. Sketch '{self.current_sketch_name}' on {location}"
+            msg = f"✓ New part created. Sketch '{self.current_sketch_name}' on {location}"
         else:
-            return f"✓ Sketch '{self.current_sketch_name}' created on {location}"
+            msg = f"✓ Sketch '{self.current_sketch_name}' created on {location}"
+
+        return self._json_result(msg, id=sketch_id, type="sketch")
     
     def _calculate_position(self, args: dict, shape_width: float, shape_height: float) -> tuple:
         """Calculate position based on absolute or relative coordinates"""
-        
+        last = self.tracker.last_shape if self.tracker else self.last_shape
+
         # Priority 1: Explicit absolute position
         if "centerX" in args and "centerY" in args:
             return args["centerX"], args["centerY"]
-        
+
         # Priority 2: Spacing from last shape (horizontal)
-        if "spacing" in args and self.last_shape:
+        if "spacing" in args and last:
             spacing = args["spacing"]
-            last_right = self.last_shape["right"]
+            last_right = last["right"]
             center_x = last_right + spacing + (shape_width / 2)
-            center_y = self.last_shape["centerY"]
+            center_y = last["centerY"]
             return center_x, center_y
-        
+
         # Priority 3: Relative offset from last shape
-        if ("relativeX" in args or "relativeY" in args) and self.last_shape:
+        if ("relativeX" in args or "relativeY" in args) and last:
             offset_x = args.get("relativeX", 0)
             offset_y = args.get("relativeY", 0)
-            center_x = self.last_shape["centerX"] + offset_x
-            center_y = self.last_shape["centerY"] + offset_y
+            center_x = last["centerX"] + offset_x
+            center_y = last["centerY"] + offset_y
             return center_x, center_y
-        
+
         # Default: Origin
         return 0, 0
     
@@ -754,11 +775,23 @@ class SketchingTools:
             "bottom": center_y - height / 2,
             "top": center_y + height / 2
         }
-        self.created_shapes.append(shape_info)
-        self.last_shape = shape_info
-        
+        coordinates = {
+            "x1": center_x - width / 2, "y1": center_y - height / 2,
+            "x2": center_x + width / 2, "y2": center_y + height / 2,
+        }
+
+        entity_id = ""
+        if self.tracker:
+            entity_id = self.tracker.register_entity("rect", coordinates, shape_info)
+            self._sync_spatial()
+        else:
+            self.created_shapes.append(shape_info)
+            self.last_shape = shape_info
+
         logger.info(f"Rectangle: {width}mm x {height}mm at ({center_x:.1f}, {center_y:.1f})")
-        return f"✓ Rectangle {width}mm x {height}mm at position ({center_x:.1f}, {center_y:.1f})"
+        msg = f"✓ Rectangle {width}mm x {height}mm at position ({center_x:.1f}, {center_y:.1f})"
+        sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+        return self._json_result(msg, id=entity_id, type="rectangle", sketchId=sketch_id)
     
     def sketch_circle(self, args: dict) -> str:
         """Draw circle with spatial awareness"""
@@ -790,11 +823,20 @@ class SketchingTools:
             "bottom": center_y - radius,
             "top": center_y + radius
         }
-        self.created_shapes.append(shape_info)
-        self.last_shape = shape_info
-        
+        coordinates = {"centerX": center_x, "centerY": center_y, "radius": radius}
+
+        entity_id = ""
+        if self.tracker:
+            entity_id = self.tracker.register_entity("circle", coordinates, shape_info)
+            self._sync_spatial()
+        else:
+            self.created_shapes.append(shape_info)
+            self.last_shape = shape_info
+
         logger.info(f"Circle: radius {radius}mm at ({center_x:.1f}, {center_y:.1f})")
-        return f"✓ Circle radius {radius}mm at position ({center_x:.1f}, {center_y:.1f})"
+        msg = f"✓ Circle radius {radius}mm at position ({center_x:.1f}, {center_y:.1f})"
+        sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+        return self._json_result(msg, id=entity_id, type="circle", sketchId=sketch_id)
 
     def sketch_line(self, args: dict) -> str:
         """Draw a line segment in the active sketch"""
@@ -826,11 +868,20 @@ class SketchingTools:
             "height": abs(y2 - y1),
             "x1": x1, "y1": y1, "x2": x2, "y2": y2
         }
-        self.created_shapes.append(shape_info)
-        self.last_shape = shape_info
+        coordinates = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+
+        entity_id = ""
+        if self.tracker:
+            entity_id = self.tracker.register_entity("line", coordinates, shape_info)
+            self._sync_spatial()
+        else:
+            self.created_shapes.append(shape_info)
+            self.last_shape = shape_info
 
         logger.info(f"Line: ({x1}, {y1}) to ({x2}, {y2}) mm")
-        return f"✓ Line from ({x1:.1f}, {y1:.1f}) to ({x2:.1f}, {y2:.1f}) mm"
+        msg = f"✓ Line from ({x1:.1f}, {y1:.1f}) to ({x2:.1f}, {y2:.1f}) mm"
+        sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+        return self._json_result(msg, id=entity_id, type="line", sketchId=sketch_id)
 
     def sketch_centerline(self, args: dict) -> str:
         """Draw a construction centerline in the active sketch"""
@@ -851,8 +902,15 @@ class SketchingTools:
         )
 
         # Centerlines are construction geometry - don't update last_shape
+        coordinates = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+        entity_id = ""
+        if self.tracker:
+            entity_id = self.tracker.register_entity("centerline", coordinates, {}, update_spatial=False)
+
         logger.info(f"Centerline: ({x1}, {y1}) to ({x2}, {y2}) mm")
-        return f"✓ Centerline from ({x1:.1f}, {y1:.1f}) to ({x2:.1f}, {y2:.1f}) mm"
+        msg = f"✓ Centerline from ({x1:.1f}, {y1:.1f}) to ({x2:.1f}, {y2:.1f}) mm"
+        sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+        return self._json_result(msg, id=entity_id, type="centerline", sketchId=sketch_id)
 
     def sketch_point(self, args: dict) -> str:
         """Create a sketch point"""
@@ -869,8 +927,15 @@ class SketchingTools:
         doc.SketchManager.CreatePoint(x / 1000.0, y / 1000.0, 0.0)
 
         # Points are zero-dimensional - don't update last_shape
+        coordinates = {"x": x, "y": y}
+        entity_id = ""
+        if self.tracker:
+            entity_id = self.tracker.register_entity("point", coordinates, {}, update_spatial=False)
+
         logger.info(f"Point: ({x}, {y}) mm")
-        return f"✓ Point at ({x:.1f}, {y:.1f}) mm"
+        msg = f"✓ Point at ({x:.1f}, {y:.1f}) mm"
+        sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+        return self._json_result(msg, id=entity_id, type="point", sketchId=sketch_id)
 
     def sketch_arc(self, args: dict) -> str:
         """Draw an arc in the active sketch (3-point or center-point mode)"""
@@ -906,11 +971,20 @@ class SketchingTools:
                 "bottom": min(all_y),
                 "top": max(all_y),
             }
-            self.created_shapes.append(shape_info)
-            self.last_shape = shape_info
+            coordinates = {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "x3": x3, "y3": y3, "mode": "3point"}
+
+            entity_id = ""
+            if self.tracker:
+                entity_id = self.tracker.register_entity("arc", coordinates, shape_info)
+                self._sync_spatial()
+            else:
+                self.created_shapes.append(shape_info)
+                self.last_shape = shape_info
 
             logger.info(f"3-point arc: ({x1},{y1}), ({x2},{y2}), ({x3},{y3}) mm")
-            return f"✓ 3-point arc through ({x1:.1f},{y1:.1f}), ({x2:.1f},{y2:.1f}), ({x3:.1f},{y3:.1f}) mm"
+            msg = f"✓ 3-point arc through ({x1:.1f},{y1:.1f}), ({x2:.1f},{y2:.1f}), ({x3:.1f},{y3:.1f}) mm"
+            sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+            return self._json_result(msg, id=entity_id, type="arc", sketchId=sketch_id)
 
         elif mode == "center":
             for key in ["centerX", "centerY", "x1", "y1", "x2", "y2"]:
@@ -939,11 +1013,20 @@ class SketchingTools:
                 "bottom": cy - radius,
                 "top": cy + radius,
             }
-            self.created_shapes.append(shape_info)
-            self.last_shape = shape_info
+            coordinates = {"centerX": cx, "centerY": cy, "x1": x1, "y1": y1, "x2": x2, "y2": y2, "mode": "center"}
+
+            entity_id = ""
+            if self.tracker:
+                entity_id = self.tracker.register_entity("arc", coordinates, shape_info)
+                self._sync_spatial()
+            else:
+                self.created_shapes.append(shape_info)
+                self.last_shape = shape_info
 
             logger.info(f"Center-point arc: center ({cx},{cy}), radius {radius:.1f} mm")
-            return f"✓ Center-point arc at ({cx:.1f},{cy:.1f}), radius {radius:.1f}mm"
+            msg = f"✓ Center-point arc at ({cx:.1f},{cy:.1f}), radius {radius:.1f}mm"
+            sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+            return self._json_result(msg, id=entity_id, type="arc", sketchId=sketch_id)
 
         else:
             raise Exception(f"Unknown arc mode: {mode}. Use '3point' or 'center'")
@@ -992,11 +1075,20 @@ class SketchingTools:
             "bottom": center_y - radius,
             "top": center_y + radius,
         }
-        self.created_shapes.append(shape_info)
-        self.last_shape = shape_info
+        coordinates = {"centerX": center_x, "centerY": center_y, "radius": radius, "numSides": num_sides}
+
+        entity_id = ""
+        if self.tracker:
+            entity_id = self.tracker.register_entity("polygon", coordinates, shape_info)
+            self._sync_spatial()
+        else:
+            self.created_shapes.append(shape_info)
+            self.last_shape = shape_info
 
         logger.info(f"Polygon: {num_sides} sides, radius {radius}mm at ({center_x:.1f}, {center_y:.1f})")
-        return f"✓ {num_sides}-sided polygon, radius {radius}mm at ({center_x:.1f}, {center_y:.1f})"
+        msg = f"✓ {num_sides}-sided polygon, radius {radius}mm at ({center_x:.1f}, {center_y:.1f})"
+        sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+        return self._json_result(msg, id=entity_id, type="polygon", sketchId=sketch_id)
 
     def sketch_ellipse(self, args: dict) -> str:
         """Draw an ellipse in the active sketch"""
@@ -1046,11 +1138,20 @@ class SketchingTools:
             "bottom": cy - extent,
             "top": cy + extent,
         }
-        self.created_shapes.append(shape_info)
-        self.last_shape = shape_info
+        coordinates = {"centerX": cx, "centerY": cy, "majorRadius": major_r, "minorRadius": minor_r}
+
+        entity_id = ""
+        if self.tracker:
+            entity_id = self.tracker.register_entity("ellipse", coordinates, shape_info)
+            self._sync_spatial()
+        else:
+            self.created_shapes.append(shape_info)
+            self.last_shape = shape_info
 
         logger.info(f"Ellipse: {major_r}x{minor_r}mm at ({cx:.1f}, {cy:.1f}), angle {angle_deg}")
-        return f"✓ Ellipse {major_r}mm x {minor_r}mm at ({cx:.1f}, {cy:.1f})"
+        msg = f"✓ Ellipse {major_r}mm x {minor_r}mm at ({cx:.1f}, {cy:.1f})"
+        sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+        return self._json_result(msg, id=entity_id, type="ellipse", sketchId=sketch_id)
 
     def sketch_spline(self, args: dict) -> str:
         """Draw a spline through a series of points"""
@@ -1091,11 +1192,20 @@ class SketchingTools:
             "width": max(xs) - min(xs),
             "height": max(ys) - min(ys),
         }
-        self.created_shapes.append(shape_info)
-        self.last_shape = shape_info
+        coordinates = {"points": [{"x": p["x"], "y": p["y"]} for p in points]}
+
+        entity_id = ""
+        if self.tracker:
+            entity_id = self.tracker.register_entity("spline", coordinates, shape_info)
+            self._sync_spatial()
+        else:
+            self.created_shapes.append(shape_info)
+            self.last_shape = shape_info
 
         logger.info(f"Spline: {len(points)} points")
-        return f"✓ Spline through {len(points)} points"
+        msg = f"✓ Spline through {len(points)} points"
+        sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+        return self._json_result(msg, id=entity_id, type="spline", sketchId=sketch_id)
 
     def sketch_slot(self, args: dict) -> str:
         """Draw a slot shape in the active sketch"""
@@ -1134,11 +1244,20 @@ class SketchingTools:
             "width": max(x1, x2) - min(x1, x2) + width,
             "height": max(y1, y2) - min(y1, y2) + width,
         }
-        self.created_shapes.append(shape_info)
-        self.last_shape = shape_info
+        coordinates = {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "width": width}
+
+        entity_id = ""
+        if self.tracker:
+            entity_id = self.tracker.register_entity("slot", coordinates, shape_info)
+            self._sync_spatial()
+        else:
+            self.created_shapes.append(shape_info)
+            self.last_shape = shape_info
 
         logger.info(f"Slot: ({x1},{y1}) to ({x2},{y2}), width {width}mm")
-        return f"✓ Slot from ({x1:.1f},{y1:.1f}) to ({x2:.1f},{y2:.1f}), width {width}mm"
+        msg = f"✓ Slot from ({x1:.1f},{y1:.1f}) to ({x2:.1f},{y2:.1f}), width {width}mm"
+        sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+        return self._json_result(msg, id=entity_id, type="slot", sketchId=sketch_id)
 
     def sketch_text(self, args: dict) -> str:
         """Insert sketch text in the active sketch"""
@@ -1182,8 +1301,15 @@ class SketchingTools:
                 logger.warning("Could not set text format (ITextFormat not available via dynamic COM)")
 
         # Text doesn't update last_shape
+        coordinates = {"x": x, "y": y, "text": text, "height": height}
+        entity_id = ""
+        if self.tracker:
+            entity_id = self.tracker.register_entity("text", coordinates, {}, update_spatial=False)
+
         logger.info(f"Text: '{text}' at ({x}, {y}) mm, height {height}mm")
-        return f"✓ Text '{text}' at ({x:.1f}, {y:.1f}) mm, height {height}mm"
+        msg = f"✓ Text '{text}' at ({x:.1f}, {y:.1f}) mm, height {height}mm"
+        sketch_id = f"sketch:{self.current_sketch_name}" if self.current_sketch_name else ""
+        return self._json_result(msg, id=entity_id, type="text", sketchId=sketch_id)
 
     @staticmethod
     def _convert_dimension_value(dim_display, user_value: float) -> tuple:
@@ -1267,7 +1393,7 @@ class SketchingTools:
             dismiss_thread.join(timeout=2)
 
         logger.info(result_msg)
-        return f"✓ {result_msg}"
+        return self._json_result(f"✓ {result_msg}", type="dimension")
 
     def set_dimension_value(self, args: dict) -> str:
         """Set the value of an existing dimension by selecting it"""
@@ -1302,7 +1428,7 @@ class SketchingTools:
         doc.ClearSelection2(True)
 
         logger.info(f"Dimension value set to {args['value']}{unit_label} at ({args['dimX']}, {args['dimY']})")
-        return f"✓ Dimension value set to {args['value']}{unit_label}"
+        return self._json_result(f"✓ Dimension value set to {args['value']}{unit_label}", type="set_dimension")
 
     # Constraint type mapping: user-friendly name -> SolidWorks API string
     CONSTRAINT_MAP = {
@@ -1360,7 +1486,7 @@ class SketchingTools:
         doc.SketchAddConstraints(self.CONSTRAINT_MAP[constraint_type])
 
         logger.info(f"Constraint '{constraint_type}' applied")
-        return f"✓ Constraint '{constraint_type}' applied"
+        return self._json_result(f"✓ Constraint '{constraint_type}' applied", type="constraint")
 
     def toggle_construction(self, args: dict) -> str:
         """Toggle construction geometry flag on a sketch entity"""
@@ -1394,37 +1520,18 @@ class SketchingTools:
 
         new_state = "construction" if not current else "normal"
         logger.info(f"Entity at ({args['x']}, {args['y']}) mm toggled to {new_state}")
-        return f"✓ Entity at ({args['x']:.1f}, {args['y']:.1f}) mm is now {new_state} geometry"
+        return self._json_result(
+            f"✓ Entity at ({args['x']:.1f}, {args['y']:.1f}) mm is now {new_state} geometry",
+            type="toggle_construction"
+        )
 
     def get_last_shape_info(self) -> str:
         """Get information about the last created shape"""
-        if not self.last_shape:
-            return "❌ No shapes have been created yet"
+        last = self.tracker.last_shape if self.tracker else self.last_shape
+        if not last:
+            return self._json_result("❌ No shapes have been created yet")
 
-        info = self.last_shape
-        result = f"Last shape: {info['type']}\n"
-        result += f"  Center: ({info['centerX']:.1f}, {info['centerY']:.1f}) mm\n"
-        result += f"  Bounds: X=[{info['left']:.1f}, {info['right']:.1f}], Y=[{info['bottom']:.1f}, {info['top']:.1f}]\n"
-
-        if info['type'] == 'rectangle':
-            result += f"  Size: {info['width']}mm x {info['height']}mm"
-        elif info['type'] == 'circle':
-            result += f"  Radius: {info['radius']}mm"
-        elif info['type'] == 'line':
-            result += f"  From: ({info['x1']:.1f}, {info['y1']:.1f}) To: ({info['x2']:.1f}, {info['y2']:.1f})"
-        elif info['type'] == 'arc':
-            if 'radius' in info:
-                result += f"  Radius: {info['radius']:.1f}mm"
-        elif info['type'] == 'ellipse':
-            result += f"  Major: {info['majorRadius']}mm, Minor: {info['minorRadius']}mm"
-        elif info['type'] == 'polygon':
-            result += f"  Sides: {info['numSides']}, Radius: {info['radius']}mm"
-        elif info['type'] == 'slot':
-            result += f"  Size: {info.get('width', 0):.1f}mm x {info.get('height', 0):.1f}mm"
-        elif info['type'] == 'spline':
-            result += f"  Span: {info.get('width', 0):.1f}mm x {info.get('height', 0):.1f}mm"
-
-        return result
+        return json.dumps({"result": "✓ Last shape info", "shapeInfo": last})
     
     def exit_sketch(self) -> str:
         """Exit sketch mode"""
@@ -1448,8 +1555,14 @@ class SketchingTools:
 
         if actual_name:
             self.current_sketch_name = actual_name
+            sketch_id = ""
+            if self.tracker:
+                sketch_id = self.tracker.close_sketch(actual_name)
             logger.info(f"Exited sketch: {actual_name}")
-            return f"✓ Exited sketch mode ({actual_name})"
+            return self._json_result(
+                f"✓ Exited sketch mode ({actual_name})",
+                id=sketch_id, type="exit_sketch"
+            )
         else:
             logger.warning("Exited sketch but could not find it in feature tree")
-            return "✓ Exited sketch mode"
+            return self._json_result("✓ Exited sketch mode", type="exit_sketch")

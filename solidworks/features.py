@@ -3,6 +3,7 @@ SolidWorks Boss/Base Feature Tools
 Revolve, Sweep, Loft, Boundary Boss
 """
 
+import json
 import logging
 import math
 from mcp.types import Tool
@@ -14,8 +15,21 @@ logger = logging.getLogger(__name__)
 class FeatureTools:
     """Boss/Base feature operations (revolve, sweep, loft, boundary boss)"""
 
-    def __init__(self, connection):
+    def __init__(self, connection, tracker=None):
         self.connection = connection
+        self.tracker = tracker
+
+    def _json_result(self, result, **extra):
+        d = {"result": result}
+        d.update(extra)
+        return json.dumps(d)
+
+    def _resolve_name(self, name_or_id):
+        if self.tracker and name_or_id.startswith(("feat:", "sketch:", "ref:")):
+            return self.tracker.resolve_name(name_or_id)
+        elif self.tracker:
+            logger.warning(f"Raw SolidWorks name '{name_or_id}' used — consider using tracked ID instead")
+        return name_or_id
 
     def get_tool_definitions(self) -> list[Tool]:
         return [
@@ -189,15 +203,18 @@ class FeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Revolve '{feature_name}' created: {angle_deg}°")
-        return f"✓ Revolve '{feature_name}' {angle_deg}° created"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "revolve", parameters={"angle": angle_deg})
+        return self._json_result(f"✓ Revolve '{feature_name}' {angle_deg}° created", id=feature_id, type="revolve")
 
     def sweep(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
         if not doc:
             raise Exception("No active document")
 
-        profile_name = args["profileSketch"]
-        path_name = args["pathSketch"]
+        profile_name = self._resolve_name(args["profileSketch"])
+        path_name = self._resolve_name(args["pathSketch"])
 
         # Exit any active sketch
         doc.ClearSelection2(True)
@@ -244,14 +261,17 @@ class FeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Sweep '{feature_name}' created: profile={profile_name}, path={path_name}")
-        return f"✓ Sweep '{feature_name}' created (profile: {profile_name}, path: {path_name})"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "sweep", parameters={"profile": profile_name, "path": path_name})
+        return self._json_result(f"✓ Sweep '{feature_name}' created (profile: {profile_name}, path: {path_name})", id=feature_id, type="sweep")
 
     def loft(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
         if not doc:
             raise Exception("No active document")
 
-        profile_names = args["profileSketches"]
+        profile_names = [self._resolve_name(n) for n in args["profileSketches"]]
         if len(profile_names) < 2:
             raise Exception("At least 2 profile sketches are required for a loft")
 
@@ -305,15 +325,18 @@ class FeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Loft '{feature_name}' created from {len(profile_names)} profiles")
-        return f"✓ Loft '{feature_name}' created from {len(profile_names)} profiles: {', '.join(profile_names)}"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "loft", parameters={"profiles": profile_names})
+        return self._json_result(f"✓ Loft '{feature_name}' created from {len(profile_names)} profiles: {', '.join(profile_names)}", id=feature_id, type="loft")
 
     def boundary_boss(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
         if not doc:
             raise Exception("No active document")
 
-        profiles = args["profiles"]
-        guide_curves = args.get("guideCurves", [])
+        profiles = [self._resolve_name(n) for n in args["profiles"]]
+        guide_curves = [self._resolve_name(n) for n in args.get("guideCurves", [])]
 
         if len(profiles) < 2:
             raise Exception("At least 2 profile sketches are required for a boundary boss")
@@ -348,4 +371,7 @@ class FeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Boundary boss '{feature_name}' created from {len(profiles)} profiles")
-        return f"✓ Boundary boss '{feature_name}' created from {len(profiles)} profiles"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "boundary_boss", parameters={"profiles": profiles})
+        return self._json_result(f"✓ Boundary boss '{feature_name}' created from {len(profiles)} profiles", id=feature_id, type="boundary_boss")

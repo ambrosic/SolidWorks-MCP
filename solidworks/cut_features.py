@@ -3,6 +3,7 @@ SolidWorks Cut Feature Tools
 Cut Revolve, Cut Sweep, Cut Loft, Boundary Cut
 """
 
+import json
 import logging
 import math
 from mcp.types import Tool
@@ -14,8 +15,21 @@ logger = logging.getLogger(__name__)
 class CutFeatureTools:
     """Cut feature operations (cut revolve, cut sweep, cut loft, boundary cut)"""
 
-    def __init__(self, connection):
+    def __init__(self, connection, tracker=None):
         self.connection = connection
+        self.tracker = tracker
+
+    def _json_result(self, result, **extra):
+        d = {"result": result}
+        d.update(extra)
+        return json.dumps(d)
+
+    def _resolve_name(self, name_or_id):
+        if self.tracker and name_or_id.startswith(("feat:", "sketch:", "ref:")):
+            return self.tracker.resolve_name(name_or_id)
+        elif self.tracker:
+            logger.warning(f"Raw SolidWorks name '{name_or_id}' used — consider using tracked ID instead")
+        return name_or_id
 
     def get_tool_definitions(self) -> list[Tool]:
         return [
@@ -181,15 +195,18 @@ class CutFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Cut revolve '{feature_name}' created: {angle_deg}°")
-        return f"✓ Cut revolve '{feature_name}' {angle_deg}° created"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "cut_revolve", parameters={"angle": angle_deg})
+        return self._json_result(f"✓ Cut revolve '{feature_name}' {angle_deg}° created", id=feature_id, type="cut_revolve")
 
     def cut_sweep(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
         if not doc:
             raise Exception("No active document")
 
-        profile_name = args["profileSketch"]
-        path_name = args["pathSketch"]
+        profile_name = self._resolve_name(args["profileSketch"])
+        path_name = self._resolve_name(args["pathSketch"])
 
         # Exit any active sketch
         doc.ClearSelection2(True)
@@ -232,14 +249,17 @@ class CutFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Cut sweep '{feature_name}' created: profile={profile_name}, path={path_name}")
-        return f"✓ Cut sweep '{feature_name}' created (profile: {profile_name}, path: {path_name})"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "cut_sweep", parameters={"profile": profile_name, "path": path_name})
+        return self._json_result(f"✓ Cut sweep '{feature_name}' created (profile: {profile_name}, path: {path_name})", id=feature_id, type="cut_sweep")
 
     def cut_loft(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
         if not doc:
             raise Exception("No active document")
 
-        profile_names = args["profileSketches"]
+        profile_names = [self._resolve_name(n) for n in args["profileSketches"]]
         if len(profile_names) < 2:
             raise Exception("At least 2 profile sketches are required for a cut loft")
 
@@ -293,15 +313,18 @@ class CutFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Cut loft '{feature_name}' created from {len(profile_names)} profiles")
-        return f"✓ Cut loft '{feature_name}' created from {len(profile_names)} profiles: {', '.join(profile_names)}"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "cut_loft", parameters={"profiles": profile_names})
+        return self._json_result(f"✓ Cut loft '{feature_name}' created from {len(profile_names)} profiles: {', '.join(profile_names)}", id=feature_id, type="cut_loft")
 
     def boundary_cut(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
         if not doc:
             raise Exception("No active document")
 
-        profiles = args["profiles"]
-        guide_curves = args.get("guideCurves", [])
+        profiles = [self._resolve_name(n) for n in args["profiles"]]
+        guide_curves = [self._resolve_name(n) for n in args.get("guideCurves", [])]
 
         if len(profiles) < 2:
             raise Exception("At least 2 profile sketches are required for a boundary cut")
@@ -335,4 +358,7 @@ class CutFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Boundary cut '{feature_name}' created from {len(profiles)} profiles")
-        return f"✓ Boundary cut '{feature_name}' created from {len(profiles)} profiles"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "boundary_cut", parameters={"profiles": profiles})
+        return self._json_result(f"✓ Boundary cut '{feature_name}' created from {len(profiles)} profiles", id=feature_id, type="boundary_cut")

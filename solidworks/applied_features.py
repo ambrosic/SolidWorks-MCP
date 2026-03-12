@@ -3,6 +3,7 @@ SolidWorks Applied Feature Tools
 Fillet, Chamfer, Shell, Draft, Rib, Wrap, Intersect
 """
 
+import json
 import logging
 import math
 from mcp.types import Tool
@@ -14,8 +15,14 @@ logger = logging.getLogger(__name__)
 class AppliedFeatureTools:
     """Applied feature operations (fillet, chamfer, shell, draft, rib, wrap, intersect)"""
 
-    def __init__(self, connection):
+    def __init__(self, connection, tracker=None):
         self.connection = connection
+        self.tracker = tracker
+
+    def _json_result(self, result, **extra):
+        d = {"result": result}
+        d.update(extra)
+        return json.dumps(d)
 
     def get_tool_definitions(self) -> list[Tool]:
         return [
@@ -282,7 +289,10 @@ class AppliedFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Fillet '{feature_name}' created: {args['radius']}mm radius on {count} edge(s)")
-        return f"✓ Fillet '{feature_name}' {args['radius']}mm radius applied to {count} edge(s)"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "fillet", parameters={"radius": args["radius"]})
+        return self._json_result(f"✓ Fillet '{feature_name}' {args['radius']}mm radius applied to {count} edge(s)", id=feature_id, type="fillet")
 
     def chamfer(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -330,7 +340,10 @@ class AppliedFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Chamfer '{feature_name}' created: {args['distance']}mm on {count} edge(s)")
-        return f"✓ Chamfer '{feature_name}' {args['distance']}mm applied to {count} edge(s)"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "chamfer", parameters={"distance": args["distance"]})
+        return self._json_result(f"✓ Chamfer '{feature_name}' {args['distance']}mm applied to {count} edge(s)", id=feature_id, type="chamfer")
 
     def shell(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -373,7 +386,10 @@ class AppliedFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Shell '{feature_name}' created: {args['thickness']}mm thickness, {count} face(s) removed")
-        return f"✓ Shell '{feature_name}' {args['thickness']}mm created with {count} face(s) removed"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "shell", parameters={"thickness": args["thickness"]})
+        return self._json_result(f"✓ Shell '{feature_name}' {args['thickness']}mm created with {count} face(s) removed", id=feature_id, type="shell")
 
     def draft(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -413,7 +429,10 @@ class AppliedFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Draft '{feature_name}' created: {args['angle']}° on {count} face(s)")
-        return f"✓ Draft '{feature_name}' {args['angle']}° applied to {count} face(s)"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "draft", parameters={"angle": args["angle"]})
+        return self._json_result(f"✓ Draft '{feature_name}' {args['angle']}° applied to {count} face(s)", id=feature_id, type="draft")
 
     def rib(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -463,7 +482,10 @@ class AppliedFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Rib '{feature_name}' created: {args['thickness']}mm thickness")
-        return f"✓ Rib '{feature_name}' {args['thickness']}mm created"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "rib", parameters={"thickness": args["thickness"]})
+        return self._json_result(f"✓ Rib '{feature_name}' {args['thickness']}mm created", id=feature_id, type="rib")
 
     def wrap(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -512,7 +534,10 @@ class AppliedFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Wrap '{feature_name}' created: {wrap_type}, depth={args.get('depth', 1.0)}mm")
-        return f"✓ Wrap '{feature_name}' ({wrap_type}) created"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "wrap", parameters={"wrapType": wrap_type})
+        return self._json_result(f"✓ Wrap '{feature_name}' ({wrap_type}) created", id=feature_id, type="wrap")
 
     def intersect(self, args: dict) -> str:
         doc = self.connection.get_active_doc()
@@ -538,4 +563,7 @@ class AppliedFeatureTools:
         feature_name = feature.Name
         doc.ViewZoomtofit2()
         logger.info(f"Intersect '{feature_name}' created")
-        return f"✓ Intersect '{feature_name}' created"
+        feature_id = ""
+        if self.tracker:
+            feature_id = self.tracker.register_feature(feature_name, "intersect")
+        return self._json_result(f"✓ Intersect '{feature_name}' created", id=feature_id, type="intersect")
