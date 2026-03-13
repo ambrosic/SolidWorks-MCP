@@ -6,7 +6,8 @@ to create basic geometry, then captures and displays the results.
 
 Usage:
     python testHarness/run_basic_tests.py
-    python testHarness/run_basic_tests.py --max-turns 15
+    python testHarness/run_basic_tests.py --model sonnet
+    python testHarness/run_basic_tests.py --model haiku --max-turns 15
     python testHarness/run_basic_tests.py --json
 """
 
@@ -53,13 +54,13 @@ BASIC_TESTS = [
 ]
 
 
-def run_test(test: dict, max_turns: int, output_json: bool) -> dict:
+def run_test(test: dict, max_turns: int, output_json: bool, model: str = None) -> dict:
     """Run a single test via Claude Code CLI."""
     name = test["name"]
     prompt = test["prompt"]
 
     print(f"\n{'─' * 50}")
-    print(f"  Running: {name}")
+    print(f"  Running: {name}" + (f"  (model: {model})" if model else ""))
     print(f"{'─' * 50}")
 
     cmd = [
@@ -68,6 +69,9 @@ def run_test(test: dict, max_turns: int, output_json: bool) -> dict:
         "--max-turns", str(max_turns),
         "--allowedTools", "mcp__solidworks__*",
     ]
+
+    if model:
+        cmd.extend(["--model", model])
 
     if output_json:
         cmd.extend(["--output-format", "json"])
@@ -106,6 +110,7 @@ def run_test(test: dict, max_turns: int, output_json: bool) -> dict:
 
         return {
             "name": name,
+            "model": model or "default",
             "success": success,
             "returncode": returncode,
             "duration_seconds": round(duration, 1),
@@ -118,6 +123,7 @@ def run_test(test: dict, max_turns: int, output_json: bool) -> dict:
         print(f"\n  TIMEOUT after {duration:.0f}s")
         return {
             "name": name,
+            "model": model or "default",
             "success": False,
             "returncode": -1,
             "duration_seconds": round(duration, 1),
@@ -129,6 +135,7 @@ def run_test(test: dict, max_turns: int, output_json: bool) -> dict:
         print("  Install with: npm install -g @anthropic-ai/claude-code")
         return {
             "name": name,
+            "model": model or "default",
             "success": False,
             "returncode": -1,
             "duration_seconds": 0,
@@ -145,6 +152,8 @@ def main():
                         help="Request JSON output from Claude")
     parser.add_argument("--test", type=str,
                         help="Run a single test by name (basic_cube, basic_prism, basic_cylinder)")
+    parser.add_argument("--model", type=str, default=None,
+                        help="Claude model to use (e.g. sonnet, haiku, opus, claude-sonnet-4-20250514)")
     parser.add_argument("--save", action="store_true",
                         help="Save results to testHarness/results/")
     args = parser.parse_args()
@@ -159,10 +168,12 @@ def main():
 
     print(f"Running {len(tests)} basic test(s) via Claude Code CLI")
     print(f"Max turns per test: {args.max_turns}")
+    if args.model:
+        print(f"Model: {args.model}")
 
     results = []
     for test in tests:
-        result = run_test(test, args.max_turns, args.json)
+        result = run_test(test, args.max_turns, args.json, args.model)
         results.append(result)
 
     # Summary
@@ -180,7 +191,8 @@ def main():
         results_dir = Path(__file__).parent / "results"
         results_dir.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        results_file = results_dir / f"basic_tests_{timestamp}.json"
+        model_tag = (args.model or "default").replace(":", "_").replace("/", "_")
+        results_file = results_dir / f"basic_tests_{timestamp}_{model_tag}.json"
         with open(results_file, "w") as f:
             json.dump(results, f, indent=2)
         print(f"\n  Saved to: {results_file}")
