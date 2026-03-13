@@ -64,15 +64,13 @@ def run_test(test: dict, max_turns: int, output_json: bool) -> dict:
 
     cmd = [
         "claude",
-        "-p",
+        "--print", prompt,
         "--max-turns", str(max_turns),
         "--allowedTools", "mcp__solidworks__*",
-        prompt,
     ]
 
     if output_json:
-        cmd.insert(2, "--output-format")
-        cmd.insert(3, "json")
+        cmd.extend(["--output-format", "json"])
 
     start = datetime.now()
 
