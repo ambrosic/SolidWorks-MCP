@@ -71,10 +71,37 @@ def get_git_commit():
 # Test runner
 # ---------------------------------------------------------------------------
 
+DIAGNOSTIC_SUFFIX = (
+    "\n\nIMPORTANT: If any tool call fails or returns an error, "
+    "include a section at the end of your response titled '## DIAGNOSTICS' "
+    "listing each issue found: the tool name, the error message, "
+    "and your best guess at the root cause or suggested fix. "
+    "Use this format:\n"
+    "## DIAGNOSTICS\n"
+    "- **tool_name**: error message — suspected cause / suggested fix\n"
+    "\nIf everything succeeds, do NOT include a DIAGNOSTICS section."
+)
+
+
+def _parse_diagnostics(stdout: str) -> str:
+    """Extract the ## DIAGNOSTICS section from agent output, if present."""
+    marker = "## DIAGNOSTICS"
+    idx = stdout.find(marker)
+    if idx == -1:
+        return ""
+    # Take everything after the marker until the next ## heading or end
+    rest = stdout[idx + len(marker):]
+    # Stop at the next markdown heading if there is one
+    next_heading = rest.find("\n## ")
+    if next_heading != -1:
+        rest = rest[:next_heading]
+    return rest.strip()
+
+
 def run_test(test: dict, max_turns: int, model: str = None) -> dict:
     """Run a single test via Claude Code CLI and return structured result."""
     name = test["name"]
-    prompt = test["prompt"]
+    prompt = test["prompt"] + DIAGNOSTIC_SUFFIX
     timeout = test.get("timeout", 300)
     turns = test.get("max_turns", max_turns)
 
@@ -89,6 +116,7 @@ def run_test(test: dict, max_turns: int, model: str = None) -> dict:
         "--print", prompt,
         "--max-turns", str(turns),
         "--allowedTools", "mcp__solidworks__*",
+        "--no-memory",
     ]
 
     if model:
@@ -124,6 +152,13 @@ def run_test(test: dict, max_turns: int, model: str = None) -> dict:
         if stderr and returncode != 0:
             print(f"\n  Stderr:")
             for line in stderr.split("\n")[:5]:
+                print(f"    {line}")
+
+        # Extract diagnostics from agent output
+        diagnostics = _parse_diagnostics(stdout)
+        if diagnostics:
+            print(f"\n  Diagnostics reported by agent:")
+            for line in diagnostics.split("\n")[:10]:
                 print(f"    {line}")
 
         # Verification: check for required keywords
@@ -162,6 +197,7 @@ def run_test(test: dict, max_turns: int, model: str = None) -> dict:
             "keywords_missing": keywords_missing,
             "stdout": stdout,
             "stderr": stderr[:500] if stderr else "",
+            "diagnostics": diagnostics,
         }
 
     except subprocess.TimeoutExpired:
@@ -272,6 +308,12 @@ def write_test_report(results: list, model: str, branch: str, commit: str,
                 lines.append(f"- Exit code: {r['returncode']}")
             if r["stderr"]:
                 lines.append(f"- Error: `{r['stderr'][:200]}`")
+            # Agent diagnostics (root cause / suggested fix)
+            if r.get("diagnostics"):
+                lines.append(f"- **Agent diagnostics:**")
+                for dline in r["diagnostics"].split("\n"):
+                    lines.append(f"  {dline}")
+                lines.append("")
             # Include last 20 lines of output for debugging
             if r["stdout"]:
                 output_lines = r["stdout"].split("\n")[-20:]
