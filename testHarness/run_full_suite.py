@@ -116,7 +116,7 @@ def run_test(test: dict, max_turns: int, model: str = None) -> dict:
         "--print", prompt,
         "--max-turns", str(turns),
         "--allowedTools", "mcp__solidworks__*",
-        "--no-memory",
+        "--settings", '{"autoMemoryEnabled": false}',
     ]
 
     if model:
