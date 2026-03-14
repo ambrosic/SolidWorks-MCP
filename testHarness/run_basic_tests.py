@@ -13,10 +13,17 @@ Usage:
 
 import subprocess
 import sys
+import os
 import argparse
 import json
 from datetime import datetime
 from pathlib import Path
+
+# Force UTF-8 on Windows so Claude's unicode output renders correctly
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -83,6 +90,7 @@ def run_test(test: dict, max_turns: int, output_json: bool, model: str = None) -
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=300,  # 5 min timeout
             cwd=str(PROJECT_ROOT),
         )
