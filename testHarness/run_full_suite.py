@@ -2,8 +2,10 @@
 Run the full SolidWorks MCP test suite via Claude Code CLI.
 
 Each test sends a natural language prompt to `claude --print`, which uses the
-SolidWorks MCP tools to accomplish the task. Results are logged to
-devNotes/<branch>/<timestamp> <title>.md and optionally saved as JSON.
+SolidWorks MCP tools to accomplish the task.
+
+Reports are saved to testHarness/testResults/ (markdown + optional JSON).
+A brief journal entry referencing the report is written to devNotes/<branch>/.
 
 Usage:
     python testHarness/run_full_suite.py                          # Run all tests
@@ -12,7 +14,8 @@ Usage:
     python testHarness/run_full_suite.py --test basic_cube         # One test
     python testHarness/run_full_suite.py --list                    # List all tests
     python testHarness/run_full_suite.py --max-turns 20            # Override turn limit
-    python testHarness/run_full_suite.py --no-log                  # Skip devNotes logging
+    python testHarness/run_full_suite.py --no-devnotes             # Skip devNotes entry
+    python testHarness/run_full_suite.py --json                    # Also save JSON results
 """
 
 import subprocess
@@ -198,24 +201,23 @@ def run_test(test: dict, max_turns: int, model: str = None) -> dict:
 # Results logging
 # ---------------------------------------------------------------------------
 
-def write_devnotes_log(results: list, model: str, branch: str, commit: str,
-                       start_time: datetime, categories_run: str):
-    """Write a markdown log to devNotes/<branch>/<timestamp> <title>.md"""
+def write_test_report(results: list, model: str, branch: str, commit: str,
+                      start_time: datetime, categories_run: str):
+    """Write detailed test report to testHarness/testResults/."""
     timestamp = start_time.strftime("%Y-%m-%dT%H%M%S")
     model_tag = (model or "default").replace(":", "-").replace("/", "-")
-    title = f"test-suite-{model_tag}"
-    filename = f"{timestamp} {title}.md"
+    filename = f"{timestamp}_{model_tag}.md"
 
-    log_dir = PROJECT_ROOT / "devNotes" / branch
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / filename
+    report_dir = Path(__file__).parent / "testResults"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / filename
 
     passed = sum(1 for r in results if r["success"])
     total = len(results)
     total_duration = sum(r["duration_seconds"] for r in results)
 
     lines = [
-        f"# Test Suite Run: {model_tag}",
+        f"# Test Suite Report: {model_tag}",
         f"",
         f"- **Date**: {start_time.strftime('%Y-%m-%d %H:%M:%S')}",
         f"- **Branch**: {branch}",
@@ -280,18 +282,64 @@ def write_devnotes_log(results: list, model: str, branch: str, commit: str,
             lines.append("")
 
     content = "\n".join(lines)
+    report_path.write_text(content, encoding="utf-8")
+    print(f"\n  Test report: {report_path}")
+    return report_path
+
+
+def write_devnotes_entry(report_path: Path, results: list, model: str,
+                         branch: str, commit: str, start_time: datetime,
+                         categories_run: str):
+    """Write a brief journal entry to devNotes/<branch>/ referencing the report."""
+    timestamp = start_time.strftime("%Y-%m-%dT%H%M%S")
+    model_tag = (model or "default").replace(":", "-").replace("/", "-")
+    filename = f"{timestamp} test-run-{model_tag}.md"
+
+    log_dir = PROJECT_ROOT / "devNotes" / branch
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / filename
+
+    passed = sum(1 for r in results if r["success"])
+    total = len(results)
+    failed_names = [r["name"] for r in results if not r["success"]]
+    total_duration = sum(r["duration_seconds"] for r in results)
+
+    # Make report path relative to project root for the reference
+    try:
+        rel_report = report_path.relative_to(PROJECT_ROOT)
+    except ValueError:
+        rel_report = report_path
+
+    lines = [
+        f"# Test Run: {model_tag}",
+        f"",
+        f"Ran {total} tests ({categories_run}) with model **{model or 'default'}** "
+        f"on branch `{branch}` @ `{commit}`.",
+        f"",
+        f"**Result: {passed}/{total} passed** in {total_duration:.1f}s",
+        f"",
+    ]
+
+    if failed_names:
+        lines.append(f"Failed: {', '.join(f'`{n}`' for n in failed_names)}")
+        lines.append("")
+
+    lines.append(f"Full report: [`{rel_report}`](../{rel_report})")
+    lines.append("")
+
+    content = "\n".join(lines)
     log_path.write_text(content, encoding="utf-8")
-    print(f"\n  DevNotes log: {log_path}")
+    print(f"  DevNotes entry: {log_path}")
     return log_path
 
 
 def save_json_results(results: list, model: str, start_time: datetime):
-    """Save raw results to testHarness/results/ as JSON."""
-    results_dir = Path(__file__).parent / "results"
-    results_dir.mkdir(exist_ok=True)
+    """Save raw results to testHarness/testResults/ as JSON."""
+    report_dir = Path(__file__).parent / "testResults"
+    report_dir.mkdir(parents=True, exist_ok=True)
     timestamp = start_time.strftime("%Y%m%dT%H%M%S")
     model_tag = (model or "default").replace(":", "_").replace("/", "_")
-    results_file = results_dir / f"full_suite_{timestamp}_{model_tag}.json"
+    results_file = report_dir / f"full_suite_{timestamp}_{model_tag}.json"
 
     payload = {
         "timestamp": start_time.isoformat(),
@@ -331,10 +379,10 @@ def main():
                         help="Default max agentic turns per test (default: 15)")
     parser.add_argument("--list", action="store_true",
                         help="List all available tests and exit")
-    parser.add_argument("--no-log", action="store_true",
-                        help="Skip writing devNotes log")
+    parser.add_argument("--no-devnotes", action="store_true",
+                        help="Skip writing devNotes journal entry")
     parser.add_argument("--json", action="store_true",
-                        help="Also save raw JSON results")
+                        help="Also save JSON results alongside the markdown report")
     args = parser.parse_args()
 
     # List mode
@@ -419,9 +467,14 @@ def main():
         status = "PASS" if r["success"] else "FAIL"
         print(f"  {status}  {r['name']:30s}  {r['category']:20s}  ({r['duration_seconds']}s)")
 
-    # Write logs
-    if not args.no_log:
-        write_devnotes_log(results, args.model, branch, commit, start_time, categories_run)
+    # Write report to testHarness/testResults/ (always)
+    report_path = write_test_report(
+        results, args.model, branch, commit, start_time, categories_run)
+
+    # Write brief journal entry to devNotes/ referencing the report
+    if not args.no_devnotes:
+        write_devnotes_entry(
+            report_path, results, args.model, branch, commit, start_time, categories_run)
 
     if args.json:
         save_json_results(results, args.model, start_time)

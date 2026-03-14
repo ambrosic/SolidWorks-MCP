@@ -65,11 +65,11 @@ python testHarness/run_full_suite.py --test basic_cube
 # List all available tests
 python testHarness/run_full_suite.py --list
 
-# Also save raw JSON results
+# Also save JSON results alongside the markdown report
 python testHarness/run_full_suite.py --model sonnet --json
 
-# Skip devNotes logging
-python testHarness/run_full_suite.py --no-log
+# Skip devNotes journal entry (report still saved to testHarness/testResults/)
+python testHarness/run_full_suite.py --no-devnotes
 ```
 
 ## Claude Desktop Configuration
