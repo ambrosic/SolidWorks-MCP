@@ -48,6 +48,28 @@ python test.py --list
 
 # Run the server directly (normally launched by Claude Desktop)
 python server.py
+
+# ── Full test suite via Claude Code CLI ──
+
+# Run all 43 tests with default model
+python testHarness/run_full_suite.py
+
+# Specify model
+python testHarness/run_full_suite.py --model sonnet
+python testHarness/run_full_suite.py --model opus
+
+# Run one category or one test
+python testHarness/run_full_suite.py --category "Feature Tools"
+python testHarness/run_full_suite.py --test basic_cube
+
+# List all available tests
+python testHarness/run_full_suite.py --list
+
+# Also save raw JSON results
+python testHarness/run_full_suite.py --model sonnet --json
+
+# Skip devNotes logging
+python testHarness/run_full_suite.py --no-log
 ```
 
 ## Claude Desktop Configuration
