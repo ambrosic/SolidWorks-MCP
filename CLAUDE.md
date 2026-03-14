@@ -2,6 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Development Journal
+
+After every meaningful change (code edits, test runs, debugging sessions, design decisions), write a journal entry to:
+
+```
+devNotes/<branch-name>/<ISO 8601 timestamp> <title>.md
+```
+
+- **Branch name**: use the current git branch (e.g., `test-harness-v1`, `main`)
+- **Timestamp**: ISO 8601 format, file-safe (e.g., `2026-03-14T153000`)
+- **Title**: short description of what was done (e.g., `fix-sketch-constraint-bug`, `add-fillet-tests`)
+- **Contents**: summarize what changed and why. If tests were run, include pass/fail results and any relevant output.
+- Create the branch subdirectory if it doesn't exist yet.
+
+Example path: `devNotes/test-harness-v1/2026-03-14T153000 add-fillet-tests.md`
+
 ## Project Overview
 
 SolidWorks MCP Server bridges Claude AI with SolidWorks CAD via the Model Context Protocol (MCP), enabling natural language creation and manipulation of 3D CAD models. Requires Windows + SolidWorks installed.
